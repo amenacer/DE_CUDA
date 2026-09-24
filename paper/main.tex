@@ -1,0 +1,58 @@
+\documentclass[conference]{IEEEtran}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{cite}
+
+\begin{document}
+
+\title{A Massively Parallel Differential Evolution on GPU with CUDA}
+
+\author{
+\IEEEauthorblockN{Amina Menacer, [Nom du binôme]}
+\IEEEauthorblockA{Master 2 IMDS, Université de Haute-Alsace, Mulhouse, France}
+}
+
+\maketitle
+
+\begin{abstract}
+% À écrire en dernier (150-200 mots) : problème, méthode, résultats chiffrés, conclusion.
+\end{abstract}
+
+\begin{IEEEkeywords}
+CUDA, GPU, Differential Evolution, Massively Parallel Computing, Global Optimization
+\end{IEEEkeywords}
+
+\section{Introduction}
+% Contexte, motivation, contributions, plan de l'article.
+
+\section{GPU Programming}
+% Architecture (SM, warps, hiérarchie mémoire), modèle CUDA (grille, blocs, threads), cuRAND.
+
+\section{Differential Evolution}
+\subsection{Overview of the sequential DE}
+% DE/rand/1/bin : mutation (1), croisement (2), sélection ; pseudo-code.
+
+\subsection{Massively parallel DE}
+% Organisation des données, kernels, diagrammes UML (séquence, activité, cas d'utilisation).
+
+\section{Experimental Results}
+\subsection{Setup}
+% GPU, CPU, versions CUDA/nvcc, paramètres (F, CR, N, D, maxFE = 10^4 D, 10 runs).
+
+\subsection{Benchmark functions}
+% Shifted Sphere, Rosenbrock, Griewank, Rastrigin : formules, domaines, optimum.
+
+\subsection{Results}
+% Tableaux qualité (moyenne ± écart-type), courbes de temps, speedup, tests statistiques.
+
+\section{Conclusion}
+% Bilan chiffré, limites, perspectives.
+
+\bibliographystyle{IEEEtran}
+% \bibliography{refs}
+
+\end{document}

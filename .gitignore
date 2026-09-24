@@ -1,0 +1,22 @@
+# Exécutables et objets
+pso
+sde
+de_gpu*
+verif
+*.o
+*.out
+*.exe
+# Python / Jupyter
+__pycache__/
+.ipynb_checkpoints/
+# Système
+__MACOSX/
+.DS_Store
+Thumbs.db
+desktop.ini
+# LaTeX (on garde seulement les sources et le PDF final)
+paper/*.aux
+paper/*.log
+paper/*.bbl
+paper/*.blg
+paper/*.synctex.gz
