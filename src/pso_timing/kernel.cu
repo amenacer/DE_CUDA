@@ -158,25 +158,28 @@ extern "C" void cuda_pso(float *positions, float *velocities, float *pBests, flo
 
     for (int iter = 0; iter < MAX_ITER; iter++)
     {
-        // (1) kernelUpdateParticle -> t_k1   [EXEMPLE DONNE]
+        // (1) kernelUpdateParticle -> t_k1   
         cudaEventRecord(e0);
         kernelUpdateParticle<<<blocksNum, threadsNum>>>(devPos, devVel, devPBest, devGBest,
                                                         getRandomClamped(), getRandomClamped());
         cudaEventRecord(e1); cudaEventSynchronize(e1);
         cudaEventElapsedTime(&ms, e0, e1); t_k1 += ms;
 
-        // (2) kernelUpdatePBest -> t_k2
-        // TODO 1 : entoure la ligne suivante comme dans l'exemple (1)
+        // (2) kernelUpdatePBest -> t_k2   (meme principe que (1))
+        cudaEventRecord(e0);
         kernelUpdatePBest<<<blocksNum, threadsNum>>>(devPos, devPBest, devGBest);
+        cudaEventRecord(e1); cudaEventSynchronize(e1);
+        cudaEventElapsedTime(&ms, e0, e1); t_k2 += ms;
 
-        // (3) copie pBests GPU -> CPU -> t_d2h
-        // TODO 2 : entoure la ligne suivante comme dans l'exemple (1)
+        // (3) copie pBests GPU -> CPU -> t_d2h   (une copie se mesure comme un kernel)
+        cudaEventRecord(e0);
         cudaMemcpy(pBests, devPBest, sizeof(float) * size, cudaMemcpyDeviceToHost);
+        cudaEventRecord(e1); cudaEventSynchronize(e1);
+        cudaEventElapsedTime(&ms, e0, e1); t_d2h += ms;
 
         // (4) boucle CPU du gBest -> t_cpu
-        // TODO 3 : mets auto c0 = std::chrono::high_resolution_clock::now(); juste avant la boucle,
-        //          puis apres la boucle : auto c1 = ...now();
-        //          t_cpu += std::chrono::duration<double, std::milli>(c1 - c0).count();
+        //     C'est du code CPU : on utilise une horloge CPU (std::chrono), pas cudaEvent.
+        auto c0 = std::chrono::high_resolution_clock::now();
         for (int i = 0; i < size; i += NUM_OF_DIMENSIONS)
         {
             for (int k = 0; k < NUM_OF_DIMENSIONS; k++)
@@ -188,9 +191,14 @@ extern "C" void cuda_pso(float *positions, float *velocities, float *pBests, flo
             }
         }
 
+        auto c1 = std::chrono::high_resolution_clock::now();
+        t_cpu += std::chrono::duration<double, std::milli>(c1 - c0).count();
+
         // (5) copie gBest CPU -> GPU -> t_h2d
-        // TODO 4 : entoure la ligne suivante comme dans l'exemple (1)
+        cudaEventRecord(e0);
         cudaMemcpy(devGBest, gBest, sizeof(float) * NUM_OF_DIMENSIONS, cudaMemcpyHostToDevice);
+        cudaEventRecord(e1); cudaEventSynchronize(e1);
+        cudaEventElapsedTime(&ms, e0, e1); t_h2d += ms;
     }
 
     // ===== Chronometrage : resultats =====
