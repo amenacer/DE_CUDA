@@ -1,0 +1,25 @@
+sequenceDiagram
+    autonumber
+    participant M as main (CPU)
+    participant P as cuda_pso (CPU)
+    participant G as GPU
+    M->>M: init positions, vitesses, pBests, gBest (rand)
+    M->>P: cuda_pso(...)
+    P->>G: cudaMalloc x4 (devPos, devVel, devPBest, devGBest)
+    P->>G: cudaMemcpy H->D x4
+    loop MAX_ITER = 30 000 iterations
+        P->>G: kernelUpdateParticle<<<48,32>>>(r1, r2)
+        Note right of G: 4.8 us/iter (3.8 %)
+        P->>G: kernelUpdatePBest<<<48,32>>>
+        Note right of G: 37 us/iter (29.5 %)
+        G-->>P: cudaMemcpy pBests D->H (6 Ko)
+        Note right of G: 11.3 us/iter (9.0 %)
+        P->>P: boucle CPU : meilleur pBest -> gBest (1024 evaluations)
+        Note right of P: 32.6 us/iter (26.0 %)
+        P->>G: cudaMemcpy gBest H->D (12 octets)
+        Note right of G: 8.6 us/iter (6.8 %)
+    end
+    G-->>P: cudaMemcpy D->H x4
+    P->>G: cudaFree x4
+    P-->>M: retour
+    M->>M: affiche temps et f(gBest)
