@@ -3,6 +3,7 @@
 #include <math_functions.h>
 
 #include "kernel.h"
+#include <chrono>
 
 
 __device__ float tempParticle1[NUM_OF_DIMENSIONS];
@@ -131,85 +132,85 @@ __global__ void kernelUpdatePBest(float *positions, float *pBests, float* gBest)
 
 extern "C" void cuda_pso(float *positions, float *velocities, float *pBests, float *gBest)
 {
-
     int size = NUM_OF_PARTICLES * NUM_OF_DIMENSIONS;
-    
-    // declare all the arrays on the device
-    float *devPos;
-    float *devVel;
-    float *devPBest;
-    float *devGBest;
-    
+    float *devPos, *devVel, *devPBest, *devGBest;
     float temp[NUM_OF_DIMENSIONS];
-        
-    // Memory allocation
+
     cudaMalloc((void**)&devPos, sizeof(float) * size);
     cudaMalloc((void**)&devVel, sizeof(float) * size);
     cudaMalloc((void**)&devPBest, sizeof(float) * size);
     cudaMalloc((void**)&devGBest, sizeof(float) * NUM_OF_DIMENSIONS);
-    
-    // Thread & Block number
+
     int threadsNum = 32;
     int blocksNum = ceil(size / threadsNum);
-    
-    // Copy particle datas from host to device
-    /**
-     * Copy in GPU memory the data from the host 
-     * */
+
     cudaMemcpy(devPos, positions, sizeof(float) * size, cudaMemcpyHostToDevice);
-    cudaMemcpy(devVel, velocities, sizeof(float) * size, 
-               cudaMemcpyHostToDevice);
+    cudaMemcpy(devVel, velocities, sizeof(float) * size, cudaMemcpyHostToDevice);
     cudaMemcpy(devPBest, pBests, sizeof(float) * size, cudaMemcpyHostToDevice);
-    cudaMemcpy(devGBest, gBest, sizeof(float) * NUM_OF_DIMENSIONS, 
-               cudaMemcpyHostToDevice);
-    
-    // PSO main function
-    // MAX_ITER = 30000;
+    cudaMemcpy(devGBest, gBest, sizeof(float) * NUM_OF_DIMENSIONS, cudaMemcpyHostToDevice);
+
+    // ===== Chronometrage : preparation =====
+    cudaEvent_t e0, e1;
+    cudaEventCreate(&e0); cudaEventCreate(&e1);
+    float ms;
+    double t_k1 = 0, t_k2 = 0, t_d2h = 0, t_cpu = 0, t_h2d = 0;
+    auto T0 = std::chrono::high_resolution_clock::now();
 
     for (int iter = 0; iter < MAX_ITER; iter++)
-    {     
+    {
+        // (1) kernelUpdateParticle -> t_k1   [EXEMPLE DONNE]
+        cudaEventRecord(e0);
+        kernelUpdateParticle<<<blocksNum, threadsNum>>>(devPos, devVel, devPBest, devGBest,
+                                                        getRandomClamped(), getRandomClamped());
+        cudaEventRecord(e1); cudaEventSynchronize(e1);
+        cudaEventElapsedTime(&ms, e0, e1); t_k1 += ms;
 
-        kernelUpdateParticle<<<blocksNum, threadsNum>>>(devPos, devVel, 
-                                                        devPBest, devGBest, 
-                                                        getRandomClamped(), 
-                                                        getRandomClamped());  
+        // (2) kernelUpdatePBest -> t_k2
+        // TODO 1 : entoure la ligne suivante comme dans l'exemple (1)
+        kernelUpdatePBest<<<blocksNum, threadsNum>>>(devPos, devPBest, devGBest);
 
-        kernelUpdatePBest<<<blocksNum, threadsNum>>>(devPos, devPBest, 
-                                                     devGBest);
-        
-        cudaMemcpy(pBests, devPBest, 
-                   sizeof(float) * NUM_OF_PARTICLES * NUM_OF_DIMENSIONS, 
-                   cudaMemcpyDeviceToHost);
-        
-        
-        for(int i = 0; i < size; i += NUM_OF_DIMENSIONS)
+        // (3) copie pBests GPU -> CPU -> t_d2h
+        // TODO 2 : entoure la ligne suivante comme dans l'exemple (1)
+        cudaMemcpy(pBests, devPBest, sizeof(float) * size, cudaMemcpyDeviceToHost);
+
+        // (4) boucle CPU du gBest -> t_cpu
+        // TODO 3 : mets auto c0 = std::chrono::high_resolution_clock::now(); juste avant la boucle,
+        //          puis apres la boucle : auto c1 = ...now();
+        //          t_cpu += std::chrono::duration<double, std::milli>(c1 - c0).count();
+        for (int i = 0; i < size; i += NUM_OF_DIMENSIONS)
         {
-            for(int k = 0; k < NUM_OF_DIMENSIONS; k++) //ssB1 
+            for (int k = 0; k < NUM_OF_DIMENSIONS; k++)
                 temp[k] = pBests[i + k];
-        
             if (host_fitness_function(temp) < host_fitness_function(gBest))
             {
                 for (int k = 0; k < NUM_OF_DIMENSIONS; k++)
                     gBest[k] = temp[k];
-            }   
+            }
         }
-        
-        cudaMemcpy(devGBest, gBest, sizeof(float) * NUM_OF_DIMENSIONS, 
-                   cudaMemcpyHostToDevice);
-    }
-    
-    cudaMemcpy(positions, devPos, sizeof(float) * size, cudaMemcpyDeviceToHost);
-    cudaMemcpy(velocities, devVel, sizeof(float) * size, 
-               cudaMemcpyDeviceToHost);
-    cudaMemcpy(pBests, devPBest, sizeof(float) * size, cudaMemcpyDeviceToHost);
-    cudaMemcpy(gBest, devGBest, sizeof(float) * NUM_OF_DIMENSIONS, 
-               cudaMemcpyDeviceToHost); 
-    
-    
-    // cleanup
-    cudaFree(devPos);
-    cudaFree(devVel);
-    cudaFree(devPBest);
-    cudaFree(devGBest);
-}
 
+        // (5) copie gBest CPU -> GPU -> t_h2d
+        // TODO 4 : entoure la ligne suivante comme dans l'exemple (1)
+        cudaMemcpy(devGBest, gBest, sizeof(float) * NUM_OF_DIMENSIONS, cudaMemcpyHostToDevice);
+    }
+
+    // ===== Chronometrage : resultats =====
+    auto T1 = std::chrono::high_resolution_clock::now();
+    double total = std::chrono::duration<double, std::milli>(T1 - T0).count();
+    double somme = t_k1 + t_k2 + t_d2h + t_cpu + t_h2d;
+    printf("\n%-22s %10s %8s\n", "Morceau", "ms", "%");
+    printf("%-22s %10.1f %7.1f%%\n", "kernelUpdateParticle", t_k1,  100*t_k1/total);
+    printf("%-22s %10.1f %7.1f%%\n", "kernelUpdatePBest",    t_k2,  100*t_k2/total);
+    printf("%-22s %10.1f %7.1f%%\n", "memcpy pBests D->H",   t_d2h, 100*t_d2h/total);
+    printf("%-22s %10.1f %7.1f%%\n", "boucle CPU gBest",     t_cpu, 100*t_cpu/total);
+    printf("%-22s %10.1f %7.1f%%\n", "memcpy gBest H->D",    t_h2d, 100*t_h2d/total);
+    printf("%-22s %10.1f %7.1f%%\n", "SOMME des parties",    somme, 100*somme/total);
+    printf("%-22s %10.1f\n",         "TOTAL boucle",         total);
+    cudaEventDestroy(e0); cudaEventDestroy(e1);
+
+    cudaMemcpy(positions, devPos, sizeof(float) * size, cudaMemcpyDeviceToHost);
+    cudaMemcpy(velocities, devVel, sizeof(float) * size, cudaMemcpyDeviceToHost);
+    cudaMemcpy(pBests, devPBest, sizeof(float) * size, cudaMemcpyDeviceToHost);
+    cudaMemcpy(gBest, devGBest, sizeof(float) * NUM_OF_DIMENSIONS, cudaMemcpyDeviceToHost);
+
+    cudaFree(devPos); cudaFree(devVel); cudaFree(devPBest); cudaFree(devGBest);
+}
