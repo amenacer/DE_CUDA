@@ -3,6 +3,9 @@ pso
 sde
 de_gpu*
 verif
+test_vs_numpy
+test_benchmarks
+test_gpu
 *.o
 *.out
 *.exe
