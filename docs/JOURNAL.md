@@ -137,9 +137,74 @@ leurs résultats dans le même format.
 - Valeurs de référence identiques à un calcul NumPy indépendant (écart relatif < 10⁻¹²).
 - Même résultat sur GPU et sur CPU (écart relatif < 10⁻¹²).
 
+### 2.3 à 2.9 — DE séquentiel (issues #6, #7, #8 — Lounis)
+Réalisé par Lounis sur ses branches `lounis/2.3-tests-numpy`, `lounis/2.4-2.6-de-sequentiel` et
+`lounis/2.7-2.9-csv-convergence` : `src/seq/sde.cpp` (DE/rand/1/bin, F = 0,5, CR = 0,3, mêmes fonctions
+et même CSV que l'interface commune). C'est la référence utilisée à l'étape 3.6 pour valider le GPU.
+
 ---
 
-## État au 29 septembre
+## Étape 3 — DE CUDA v1
+
+### 3.1 à 3.5 — Écrire le DE CUDA v1 (issues #9 et #10)
+**Objectif.** Un premier DE sur GPU, simple et juste, qui respecte les leçons du chronométrage du PSO.
+
+**Ce qu'on a fait.** `src/cuda/cuda_utils.h` et `src/cuda/de_cuda_v1.cu`, notebook `notebooks/Etape3_DE_CUDA_v1.ipynb`.
+- `CUDA_CHECK` sur chaque appel CUDA, `cudaGetLastError` après chaque lancement de kernel.
+- Mémoire globale : `pop`, `trial`, `fit`, `fit_trial` ; décalage `o` en **mémoire constante** ;
+  un générateur cuRAND (Philox) par individu.
+- Une génération = 3 kernels (mutation-croisement, évaluation, sélection), un thread par individu,
+  grille (N + T − 1) / T. Essais dans `trial`, sélection ensuite : pas de race condition.
+- **Aucun transfert dans la boucle** ; `cudaFree(0)` avant le chrono ; `cudaEvent` autour de l'algorithme.
+
+**Validation (GPU T4, `results/etape3_v1_controles.md`).**
+- Compilation sans aucun warning (`-Wall -Wextra`, `-arch=sm_75`).
+- Lancement volontairement faux (2048 threads par bloc) : arrêt avec un message clair (fichier, ligne, erreur CUDA).
+- Même graine → même résultat, sur les 4 fonctions.
+- Écart de temps entre deux runs identiques : 0,06 % (critère : < 10 %).
+
+### 3.6 et 3.7 — Valider le GPU contre le séquentiel et mesurer le speedup (issue #11)
+**Ce qu'on a fait.** Notebook `notebooks/Etape3_6_validation_speedup.ipynb`, résultats dans
+`results/etape3_validation_speedup.md`, `results/*_v1*.csv` et `figures/speedup_v1.png`.
+
+**Résultats.**
+- Sphere et Rastrigin, D = 10, N = 50, 10 runs : les deux programmes trouvent l'optimum exact à chaque run.
+- Complément sur des cas non triviaux : Rastrigin D = 50 (p = 0,140) et Rosenbrock D = 10 (p = 0,089, limite) :
+  pas de différence significative au seuil de 5 % (Mann-Whitney, 10 runs).
+- Speedup de la v1 (N = 100) : de × 0,98 (Griewank D = 50, plus lent que le CPU) à × 2,3 (Rastrigin D = 50).
+  Modeste : un seul bloc de 128 threads (1 SM sur 40), chaque thread bouclant sur D gènes avec des accès
+  mémoire non coalescés.
+
+**À savoir.** Le séquentiel remplace x_i dès que l'essai est meilleur ; le GPU remplace en fin de
+génération (obligatoire en parallèle). Ce ne sont pas exactement le même algorithme, mais aucune
+différence de qualité n'a été mesurée.
+
+---
+
+## Étape 4 — DE CUDA v2 optimisé
+
+### 4.1 à 4.5 — Optimiser le DE CUDA (issues #12 et #13)
+**Ce qu'on a fait.** `src/cuda/de_cuda_v2.cu`, notebook `notebooks/Etape4_DE_CUDA_v2.ipynb`.
+- **Kernel P** : un thread par individu tire r1, r2, r3 et jrand (matrice d'indices).
+- **Kernel fusionné MCER** (Mutation, Croisement, Évaluation, Remplacement) : un bloc par individu,
+  un thread par gène, essai en **mémoire partagée**, f(u) par **réduction parallèle**, gagnant écrit
+  dans un **second tampon** (double tampon, puis échange des pointeurs).
+- Meilleur individu par **argmin sur GPU** : 16 octets copiés à la fin.
+- **Taille de bloc automatique**, fixée par un balayage mesuré : 32 threads si D ≤ 32 ou N ≥ 4 × (nombre de SM),
+  sinon 64. Les blocs de 128 ou 256 threads ont 100 % d'occupation théorique mais sont toujours plus lents
+  que le meilleur choix entre 32 et 64. Règle ajustée sur 12 cas mesurés (D = 50/100, N = 50/100/500).
+
+**Résultats (GPU T4, `results/etape4_v2_resultats.md`, `figures/temps_v1_v2_N.png`).**
+- Chaque run vérifie argmin GPU = min CPU et f(réduction GPU) = f(CPU) : tous `sante=OK`.
+- Pas de différence de qualité détectée avec la v1 (Mann-Whitney, 10 runs) : Rosenbrock D = 10 (p = 0,623),
+  Rosenbrock D = 50 (p = 0,345), Rastrigin D = 50 (p = 0,104).
+- v2 de **× 1,7 à × 14,6** plus rapide que la v1 (v1 non optimisée : pour N ≤ 128, un seul bloc, donc 1 SM sur 40).
+- Ordre de grandeur face au séquentiel (Rastrigin, N = 100, même session Colab) : **≈ × 4 en D = 10, ≈ × 22 en D = 50,
+  ≈ × 33 en D = 100**. Le speedup définitif viendra de la campagne de l'étape 5.
+
+---
+
+## État au 6 octobre
 
 | Tâche | Branche | Pull request | État |
 |---|---|---|---|
@@ -148,6 +213,10 @@ leurs résultats dans le même format.
 | 1.4 Dessiner le diagramme de séquence | `amina/1.4-1.5-docs` | #23 | à relire |
 | 1.5 Établir la correspondance PSO → DE | `amina/1.4-1.5-docs` et `lounis/1.5-correspondance-pso-de` | #23 | à relire, versions à réunir |
 | 2.0 Définir l'interface commune | `amina/interface-commune` | #24 | fusionnée |
+| 2.3-2.9 DE séquentiel (Lounis) | `lounis/2.3-…`, `lounis/2.4-…`, `lounis/2.7-…` | voir GitHub | à relire |
+| 3.1-3.5 Écrire le DE CUDA v1 | `amina/3.1-3.5-ecrire-de-cuda-v1` | voir GitHub | à relire |
+| 3.6-3.7 Valider le GPU et mesurer le speedup | `amina/3.6-3.7-valider-gpu-speedup` | voir GitHub | à relire |
+| 4.1-4.5 Optimiser le DE CUDA (v2) | `amina/4.1-4.5-optimiser-de-cuda-v2` | voir GitHub | à relire |
 
-**Prochaine tâche.** 2.4-2.6 Implémenter le DE/rand/1/bin séquentiel (issue #7), en utilisant
-`benchmarks.h` et `results_csv.h`.
+**Prochaine tâche.** 5.1-5.5 Écrire run_all.py et lancer la campagne complète (issue #14, Lounis) :
+4 fonctions × 3 D × 3 N × 10 runs, pour `sde`, `cuda_v1` et `cuda_v2`, avec la même ligne de commande.
