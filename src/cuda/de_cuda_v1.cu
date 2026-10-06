@@ -1,7 +1,10 @@
 // de_cuda_v1.cu -- DE/rand/1/bin sur GPU, version 1 "naive" (issues #9 et #10)
 //
-// Meme algorithme que le DE sequentiel (src/seq/sde.cpp), memes fonctions
-// (src/common/benchmarks.h), meme budget, meme format CSV. Une generation =
+// DE/rand/1/bin comme le DE sequentiel (src/seq/sde.cpp), memes fonctions
+// (src/common/benchmarks.h), meme budget, meme format CSV. Difference : ici la
+// population est remplacee en fin de generation (DE "generationnel", obligatoire
+// en parallele), alors que sde.cpp remplace x_i des que l'essai est meilleur.
+// Une generation =
 // 3 kernels separes, un thread par individu :
 //
 //   k_mutation_croisement : trial[i] = croisement(pop[i], pop[r1] + F (pop[r2] - pop[r3]))
@@ -131,7 +134,7 @@ static int test_erreur() {
     printf("Lancement de k_eval avec 2048 threads par bloc (maximum autorise : 1024)...\n");
     fflush(stdout);
     k_eval<<<1, 2048>>>(d, d, 1, 1, 0);
-    CUDA_CHECK_KERNEL();                      // -> "invalid configuration argument"
+    CUDA_CHECK_KERNEL();                      // -> message clair (fichier, ligne, erreur CUDA)
     printf("ERREUR : le lancement faux n'a pas ete detecte\n");
     return 1;
 }
@@ -163,6 +166,11 @@ int main(int argc, char** argv) {
         if (!std::strcmp(argv[a], "--trace")) trace = true;
         else if (!std::strcmp(argv[a], "--threads") && a + 1 < argc) T = atoi(argv[++a]);
         else csv = argv[a];
+    }
+
+    if (T < 1 || T > 1024) {
+        fprintf(stderr, "--threads doit etre entre 1 et 1024 (recu %d)\n", T);
+        return 1;
     }
 
     const long long maxFE = max_fe(D);
