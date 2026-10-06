@@ -12,16 +12,18 @@
 //         memoire globale) ;
 //       - f(u) est calculee par une reduction parallele dans le bloc ;
 //       - le gagnant (u ou x_i) est ecrit dans un SECOND tableau pop_out.
+//     Remarque : les generateurs "par gene" sont indexes par i*T + t ; le resultat
+//     d'une graine est donc reproductible pour un T donne (pas d'un T a l'autre).
 //     Double tampon : on lit pop_in, on ecrit pop_out, puis on echange les deux
 //     pointeurs. Indispensable : un bloc lit x_r1, x_r2, x_r3 pendant que d'autres
 //     blocs ecrivent leur gagnant ; ecrire dans pop_in creerait une race condition.
 //     Les threads d'un bloc lisent des genes consecutifs : acces memoire coalesces
 //     (en v1, un thread par individu lisait avec un pas de D).
 //  3. Le meilleur individu est trouve sur GPU par une reduction argmin : une seule
-//     copie de 12 octets vers le CPU a la fin.
-//  4. Configuration automatique : threads par bloc = puissance de 2 >= D, entre 32
-//     et 256 ; --occupation affiche l'occupation theorique de chaque choix
-//     (cudaOccupancyMaxActiveBlocksPerMultiprocessor).
+//     copie de 16 octets (struct Best : double + int + alignement) vers le CPU a la fin.
+//  4. Configuration automatique du nombre de threads par bloc selon D, N et le
+//     nombre de SM (regle mesuree, voir threads_auto) ; --occupation affiche
+//     l'occupation theorique de chaque choix (cudaOccupancyMaxActiveBlocksPerMultiprocessor).
 //
 // Par generation : 2 lancements de kernel (v1 : 3), 0 transfert CPU <-> GPU.
 //
@@ -211,10 +213,25 @@ __global__ void k_argmin(const double* fit, int N, Best* out) {
 }
 
 // ------------------------------------------------------------ configuration
-static int threads_auto(int D) {          // puissance de 2 >= D, bornee a [32, 256]
-    int T = 32;
-    while (T < D && T < 256) T *= 2;
-    return T;
+// Regle fixee par le balayage mesure sur le T4 (results/taille_bloc_v2.csv) :
+//  - D <= 32 : un warp (32 threads) couvre tous les genes ;
+//  - peu de blocs (N < 4 x nombre de SM) : le GPU n'est pas rempli, 64 threads
+//    par bloc donnent plus de parallelisme dans chaque bloc ;
+//  - beaucoup de blocs (N >= 4 x SM) : le GPU est deja rempli, 32 threads par bloc
+//    limitent le cout des __syncthreads et de la reduction (log2 T etapes).
+// Les blocs plus gros (128, 256) sont toujours plus lents que le meilleur choix entre
+// 32 et 64, meme a 100 % d'occupation. Limites : regle ajustee sur 12 cas (D = 50/100,
+// N = 50/100/500) ; le seuil 4 x SM (160 sur un T4) est seulement situe entre N = 100 et 500.
+static int threads_auto(int D, int N, int nb_sm) {
+    if (D <= 32 || N >= 4 * nb_sm) return 32;
+    return 64;
+}
+
+static int nb_sm() {
+    int dev = 0, n = 0;
+    CUDA_CHECK(cudaGetDevice(&dev));
+    CUDA_CHECK(cudaDeviceGetAttribute(&n, cudaDevAttrMultiProcessorCount, dev));
+    return n;
 }
 
 static int occupation(int D) {
@@ -222,7 +239,9 @@ static int occupation(int D) {
     CUDA_CHECK(cudaGetDeviceProperties(&p, 0));
     printf("GPU : %s, %d SM, %d threads max par SM, %zu octets de memoire partagee par bloc\n",
            p.name, p.multiProcessorCount, p.maxThreadsPerMultiProcessor, p.sharedMemPerBlock);
-    printf("Kernel k_MCER, D = %d (choix automatique : %d threads)\n", D, threads_auto(D));
+    printf("Kernel k_MCER, D = %d (choix automatique : %d threads si N < %d, %d threads sinon)\n",
+           D, threads_auto(D, 1, p.multiProcessorCount), 4 * p.multiProcessorCount,
+           threads_auto(D, 4 * p.multiProcessorCount, p.multiProcessorCount));
     printf("threads/bloc,shmem_octets,blocs_par_SM,warps_actifs_par_SM,occupation_%%,threads_utiles_%%\n");
     for (int T = 32; T <= 512; T *= 2) {
         int nb = 0;
@@ -274,12 +293,13 @@ int main(int argc, char** argv) {
     }
     const char* csv = nullptr;
     bool trace = false;
-    int T = threads_auto(D);
+    int T = -1;                                  // -1 : choix automatique
     for (int a = 5; a < argc; a++) {
         if (!std::strcmp(argv[a], "--trace")) trace = true;
         else if (!std::strcmp(argv[a], "--threads") && a + 1 < argc) T = atoi(argv[++a]);
         else csv = argv[a];
     }
+    if (T < 0) T = threads_auto(D, N, nb_sm());
     if (T < 32 || T > 512 || (T & (T - 1))) {
         fprintf(stderr, "--threads doit etre une puissance de 2 entre 32 et 512 (recu %d)\n", T);
         return 1;
@@ -338,7 +358,7 @@ int main(int argc, char** argv) {
         }
     }
     k_argmin<<<1, 512>>>(fin, N, d_best);                                          CUDA_CHECK_KERNEL();
-    CUDA_CHECK(cudaMemcpy(&h_best, d_best, sizeof(Best), cudaMemcpyDeviceToHost)); // 12 octets
+    CUDA_CHECK(cudaMemcpy(&h_best, d_best, sizeof(Best), cudaMemcpyDeviceToHost)); // 16 octets
     CUDA_CHECK(cudaEventRecord(e1));
     CUDA_CHECK(cudaEventSynchronize(e1));
     // ------------------------------------------------------------------------
@@ -356,6 +376,10 @@ int main(int argc, char** argv) {
     if (cpu_min != h_best.val) {
         fprintf(stderr, "SANTE: argmin GPU %.17g != min CPU %.17g\n", h_best.val, cpu_min);
         healthy = false;
+    }
+    if (h_best.idx < 0 || h_best.idx >= N) {      // toutes les fitness non finies
+        fprintf(stderr, "SANTE: argmin GPU invalide (indice %d)\n", h_best.idx);
+        return 2;
     }
     // controle de la reduction parallele : f(meilleur) recalculee avec evaluate()
     const double ref = evaluate(f, &h_pop[(size_t)h_best.idx * D], o.data(), D);
