@@ -20,3 +20,7 @@ paper/*.log
 paper/*.bbl
 paper/*.blg
 paper/*.synctex.gz
+# DE CUDA (src/cuda)
+de_cuda_v[0-9]
+test_gpu
+test_benchmarks
