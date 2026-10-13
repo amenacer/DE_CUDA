@@ -1,12 +1,20 @@
-%% Diagramme d'activité : déroulement d'un run du DE sur GPU (v2)
+%% Diagramme d'activité : un appel du programme DE CUDA v2 (main de src/cuda/de_cuda_v2.cu)
 flowchart TD
-    A([Début]) --> B[Lire fonction, D, N, graine, options]
-    B --> C{Arguments valides ?}
+    A([Début]) --> O{Option --occupation D ?}
+    O -- oui --> O1[Afficher l'occupation théorique pour T = 32 à 512] --> O2([Fin, code 0])
+    O -- non --> B[Lire fonction, D, N, graine, fichier CSV, --trace, --threads T]
+    B --> C{Fonction connue, 1 ≤ D ≤ 1024, N ≥ 4 ?}
     C -- non --> X([Message d'erreur, code 1])
-    C -- oui --> D[Choisir T : 32 si D ≤ 32 ou N ≥ 4 × SM, sinon 64]
-    D --> E[Calculer le décalage o et le copier en mémoire constante]
-    E --> F[Allouer la mémoire GPU]
-    F --> G[Initialiser cuRAND, la population et ses fitness]
+    C -- oui --> D{T donné par --threads ?}
+    D -- non --> D1[T automatique : 32 si D ≤ 32 ou N ≥ 4 × SM, sinon 64]
+    D -- oui --> D2[T donné]
+    D1 --> T{T puissance de 2 entre 32 et 512 ?}
+    D2 --> T
+    T -- non --> X
+    T -- oui --> E[Calculer le décalage o]
+    E --> F[cudaFree 0 : créer le contexte CUDA hors chronomètre]
+    F --> F2[Allouer la mémoire GPU, copier o en mémoire constante]
+    F2 --> G[Démarrer le chronomètre, initialiser cuRAND, la population et ses fitness]
     G --> H[fe ← N]
     H --> I{fe < 10⁴·D ?}
     I -- oui --> J[Kernel P : tirer r1, r2, r3, jrand pour chaque individu]
@@ -15,9 +23,14 @@ flowchart TD
     L --> M[fe ← fe + n]
     M --> I
     I -- non --> N1[Kernel argmin : meilleur individu]
-    N1 --> O[Copier 16 octets vers l'hôte, arrêter le chronomètre]
-    O --> P[Contrôles de santé sur la population finale]
-    P --> W[Écrire la ligne de résultat et la ligne CSV]
-    W --> Q{Tout est cohérent ?}
-    Q -- oui --> R([Fin : sante=OK, code 0])
-    Q -- non --> S([Fin : sante=ANOMALIE, code 2])
+    N1 --> N2[Copier 16 octets vers l'hôte, arrêter le chronomètre]
+    N2 --> P[Copier la population finale et vérifier bornes, valeurs finies, budget, argmin GPU = min CPU]
+    P --> V{Indice du meilleur valide ?}
+    V -- non --> V1([Erreur SANTE, code 2])
+    V -- oui --> P2[Vérifier f GPU = evaluate CPU]
+    P2 --> W[Afficher la ligne de résultat avec sante=OK ou ANOMALIE]
+    W --> Y{Écriture dans le CSV réussie ?}
+    Y -- non --> X
+    Y -- oui --> Q{Tous les contrôles passés ?}
+    Q -- oui --> R([Fin, code 0])
+    Q -- non --> S([Fin, code 2])

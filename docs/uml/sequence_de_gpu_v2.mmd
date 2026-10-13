@@ -9,7 +9,7 @@ sequenceDiagram
     participant KA as kernel argmin
 
     U->>H: de_cuda_v2 fonction D N graine fichier.csv
-    H->>H: vérifier les arguments, choisir T (32 ou 64 threads)
+    H->>H: vérifier les arguments, T = --threads sinon automatique (32 ou 64)
     H->>H: o = make_shift(f, D) (même décalage que le séquentiel)
     H->>G: cudaFree(0), cudaMalloc (pop A/B, fit A/B, indices, états cuRAND)
     H->>G: cudaMemcpyToSymbol(c_shift ← o)
