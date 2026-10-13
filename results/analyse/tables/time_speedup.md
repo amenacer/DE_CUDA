@@ -12,4 +12,4 @@
 | 100 | 100 | 2.943 | 1.784 [x1.6] | 0.122 [x24.2] | 0.160 [x18.3] |
 | 100 | 500 | 3.191 | 0.446 [x7.2] | 0.055 [x57.5] | 0.063 [x50.8] |
 
-Temps moyens (s) sur toutes les fonctions et tous les runs. Speedup = T_sde / T_algo (un speedup < 1 signifie que l'algorithme est plus lent que la référence).
+Temps moyens (s) sur les 4 fonctions et tous les runs (le speedup est le rapport de ces moyennes, pas la moyenne des speedups par fonction : voir speedup_par_fonction.md). Speedup = T_sde / T_algo (un speedup < 1 signifie que l'algorithme est plus lent que la référence).
