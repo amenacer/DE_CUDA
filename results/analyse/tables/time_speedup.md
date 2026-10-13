@@ -1,0 +1,15 @@
+### Temps d'exécution et speedup
+
+| Dim | Pop | sde (s) | cuda_v1 (s) [speedup] | cuda_v2 (s) [speedup] | gpu_jde (s) [speedup] |
+|---|---|---|---|---|---|
+| 10 | 50 | 0.033 | 0.041 [x0.8] | 0.017 [x1.9] | 0.021 [x1.6] |
+| 10 | 100 | 0.034 | 0.024 [x1.4] | 0.009 [x3.8] | 0.011 [x3.1] |
+| 10 | 500 | 0.039 | 0.005 [x7.9] | 0.003 [x12.7] | 0.004 [x10.8] |
+| 50 | 50 | 0.729 | 0.725 [x1.0] | 0.090 [x8.1] | 0.111 [x6.5] |
+| 50 | 100 | 0.732 | 0.460 [x1.6] | 0.050 [x14.7] | 0.066 [x11.1] |
+| 50 | 500 | 0.781 | 0.101 [x7.7] | 0.019 [x40.4] | 0.022 [x35.2] |
+| 100 | 50 | 2.845 | 2.723 [x1.0] | 0.215 [x13.2] | 0.261 [x10.9] |
+| 100 | 100 | 2.943 | 1.784 [x1.6] | 0.122 [x24.2] | 0.160 [x18.3] |
+| 100 | 500 | 3.191 | 0.446 [x7.2] | 0.055 [x57.5] | 0.063 [x50.8] |
+
+Temps moyens (s) sur les 4 fonctions et tous les runs (le speedup est le rapport de ces moyennes, pas la moyenne des speedups par fonction : voir speedup_par_fonction.md). Speedup = T_sde / T_algo (un speedup < 1 signifie que l'algorithme est plus lent que la référence).

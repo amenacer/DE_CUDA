@@ -1,0 +1,21 @@
+\begin{table}[t]
+\centering
+\caption{Temps d'exécution moyen (s) et speedup.}
+\label{tab:time}
+\scriptsize
+\begin{tabular}{llcccc}
+\toprule
+Dim & Pop & sde (s) & cuda\_v1 (s) [speedup] & cuda\_v2 (s) [speedup] & gpu\_jde (s) [speedup] \\
+\midrule
+10 & 50 & 0.033 & 0.041 [$\times$0.8] & 0.017 [$\times$1.9] & 0.021 [$\times$1.6] \\
+10 & 100 & 0.034 & 0.024 [$\times$1.4] & 0.009 [$\times$3.8] & 0.011 [$\times$3.1] \\
+10 & 500 & 0.039 & 0.005 [$\times$7.9] & 0.003 [$\times$12.7] & 0.004 [$\times$10.8] \\
+50 & 50 & 0.729 & 0.725 [$\times$1.0] & 0.090 [$\times$8.1] & 0.111 [$\times$6.5] \\
+50 & 100 & 0.732 & 0.460 [$\times$1.6] & 0.050 [$\times$14.7] & 0.066 [$\times$11.1] \\
+50 & 500 & 0.781 & 0.101 [$\times$7.7] & 0.019 [$\times$40.4] & 0.022 [$\times$35.2] \\
+100 & 50 & 2.845 & 2.723 [$\times$1.0] & 0.215 [$\times$13.2] & 0.261 [$\times$10.9] \\
+100 & 100 & 2.943 & 1.784 [$\times$1.6] & 0.122 [$\times$24.2] & 0.160 [$\times$18.3] \\
+100 & 500 & 3.191 & 0.446 [$\times$7.2] & 0.055 [$\times$57.5] & 0.063 [$\times$50.8] \\
+\bottomrule
+\end{tabular}
+\end{table}

@@ -1,0 +1,24 @@
+\begin{table}[t]
+\centering
+\caption{Erreur moyenne $\pm$ écart-type, Dim = 100. Symboles : test contre sde.}
+\label{tab:quality_d100}
+\scriptsize
+\begin{tabular}{llcccc}
+\toprule
+Fonction & Pop & sde & cuda\_v1 & cuda\_v2 & gpu\_jde \\
+\midrule
+Shifted Sphere & 50 & \textbf{$0\pm0$} & \textbf{$0\pm0$ $\approx$} & \textbf{$0\pm0$ $\approx$} & $6.75\times10^{-28}\pm7.22\times10^{-28}$ $-$ \\
+Shifted Sphere & 100 & \textbf{$0\pm0$} & $1.86\times10^{-30}\pm4.35\times10^{-30}$ $\approx$ & $5.59\times10^{-29}\pm1.02\times10^{-28}$ $-$ & $2.15\times10^{-29}\pm6.35\times10^{-29}$ $\approx$ \\
+Shifted Sphere & 500 & $7.33\times10^{-2}\pm5.45\times10^{-3}$ & $9.79\times10^{-2}\pm1.17\times10^{-2}$ $-$ & $9.82\times10^{-2}\pm6.54\times10^{-3}$ $-$ & \textbf{$4.32\times10^{-15}\pm1.33\times10^{-15}$ $+$} \\
+Shifted Rastrigin & 50 & $4.93\times10^{2}\pm1.02\times10^{1}$ & $4.95\times10^{2}\pm1.84\times10^{1}$ $\approx$ & $4.95\times10^{2}\pm1.14\times10^{1}$ $\approx$ & \textbf{$4.97\times10^{-1}\pm8.46\times10^{-1}$ $+$} \\
+Shifted Rastrigin & 100 & $5.42\times10^{2}\pm1.09\times10^{1}$ & $5.32\times10^{2}\pm1.45\times10^{1}$ $\approx$ & $5.33\times10^{2}\pm1.44\times10^{1}$ $\approx$ & \textbf{$0\pm0$ $+$} \\
+Shifted Rastrigin & 500 & $6.28\times10^{2}\pm1.42\times10^{1}$ & $6.23\times10^{2}\pm1.75\times10^{1}$ $\approx$ & $6.23\times10^{2}\pm1.78\times10^{1}$ $\approx$ & \textbf{$3.54\times10^{1}\pm3.22\times10^{0}$ $+$} \\
+Shifted Rosenbrock & 50 & $8.96\times10^{1}\pm1.69\times10^{1}$ & $8.46\times10^{1}\pm2.28\times10^{0}$ $\approx$ & $8.51\times10^{1}\pm2.95\times10^{0}$ $\approx$ & \textbf{$7.94\times10^{1}\pm6.43\times10^{1}$ $\approx$} \\
+Shifted Rosenbrock & 100 & \textbf{$8.96\times10^{1}\pm2.01\times10^{-1}$} & $9.00\times10^{1}\pm6.94\times10^{-1}$ $\approx$ & $8.97\times10^{1}\pm1.95\times10^{-1}$ $\approx$ & $1.12\times10^{2}\pm3.17\times10^{1}$ $\approx$ \\
+Shifted Rosenbrock & 500 & $2.19\times10^{4}\pm3.41\times10^{3}$ & $2.33\times10^{4}\pm3.41\times10^{3}$ $\approx$ & $2.50\times10^{4}\pm3.26\times10^{3}$ $\approx$ & \textbf{$1.04\times10^{2}\pm2.45\times10^{1}$ $+$} \\
+Shifted Griewank & 50 & \textbf{$0\pm0$} & \textbf{$0\pm0$ $\approx$} & \textbf{$0\pm0$ $\approx$} & $4.40\times10^{-2}\pm5.55\times10^{-2}$ $-$ \\
+Shifted Griewank & 100 & \textbf{$0\pm0$} & \textbf{$0\pm0$ $\approx$} & \textbf{$0\pm0$ $\approx$} & \textbf{$0\pm0$ $\approx$} \\
+Shifted Griewank & 500 & $4.39\times10^{-2}\pm3.27\times10^{-3}$ & $5.57\times10^{-2}\pm4.99\times10^{-3}$ $-$ & $5.71\times10^{-2}\pm5.39\times10^{-3}$ $-$ & \textbf{$1.90\times10^{-15}\pm9.24\times10^{-16}$ $+$} \\
+\bottomrule
+\end{tabular}
+\end{table}
