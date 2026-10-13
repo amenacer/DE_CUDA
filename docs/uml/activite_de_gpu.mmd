@@ -1,0 +1,23 @@
+%% Diagramme d'activité : déroulement d'un run du DE sur GPU (v2)
+flowchart TD
+    A([Début]) --> B[Lire fonction, D, N, graine, options]
+    B --> C{Arguments valides ?}
+    C -- non --> X([Message d'erreur, code 1])
+    C -- oui --> D[Choisir T : 32 si D ≤ 32 ou N ≥ 4 × SM, sinon 64]
+    D --> E[Calculer le décalage o et le copier en mémoire constante]
+    E --> F[Allouer la mémoire GPU]
+    F --> G[Initialiser cuRAND, la population et ses fitness]
+    G --> H[fe ← N]
+    H --> I{fe < 10⁴·D ?}
+    I -- oui --> J[Kernel P : tirer r1, r2, r3, jrand pour chaque individu]
+    J --> K[Kernel MCER : mutation, croisement, évaluation, remplacement]
+    K --> L[Échanger les tampons pop_in et pop_out]
+    L --> M[fe ← fe + n]
+    M --> I
+    I -- non --> N1[Kernel argmin : meilleur individu]
+    N1 --> O[Copier 16 octets vers l'hôte, arrêter le chronomètre]
+    O --> P[Contrôles de santé sur la population finale]
+    P --> W[Écrire la ligne de résultat et la ligne CSV]
+    W --> Q{Tout est cohérent ?}
+    Q -- oui --> R([Fin : sante=OK, code 0])
+    Q -- non --> S([Fin : sante=ANOMALIE, code 2])

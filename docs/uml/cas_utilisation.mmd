@@ -1,0 +1,32 @@
+%% Diagramme de cas d'utilisation du projet DE_CUDA
+flowchart LR
+    U(["👤 Étudiant / expérimentateur"])
+    C(["⚙️ Script de campagne run_all.py"])
+    subgraph S [Système DE_CUDA]
+        UC1((Lancer un run du DE séquentiel))
+        UC2((Lancer un run du DE GPU v1 ou v2))
+        UC3((Lancer une variante : CR, current-to-best, jDE))
+        UC4((Choisir fonction, D, N et graine))
+        UC5((Vérifier la santé du run))
+        UC6((Enregistrer le résultat dans le CSV commun))
+        UC7((Lancer la campagne complète))
+        UC8((Analyser les résultats : tableaux, figures, tests))
+        UC9((Comparer avec l'article de référence))
+    end
+    U --- UC1
+    U --- UC2
+    U --- UC3
+    U --- UC7
+    U --- UC8
+    C --- UC7
+    UC1 -. inclut .-> UC4
+    UC2 -. inclut .-> UC4
+    UC3 -. inclut .-> UC4
+    UC1 -. inclut .-> UC5
+    UC2 -. inclut .-> UC5
+    UC3 -. inclut .-> UC5
+    UC5 -. inclut .-> UC6
+    UC7 -. inclut .-> UC1
+    UC7 -. inclut .-> UC2
+    UC7 -. inclut .-> UC3
+    UC9 -. étend .-> UC8
