@@ -10,9 +10,8 @@
 \usepackage{xcolor}
 \usepackage{url}
 
-\graphicspath{{../figures/}}
-% Parts that wait for the full campaign (step 5, issue #14) and its statistics
-% (step 6, issues #16 and #21) are marked with \afaire{...}. Remove the macro once filled.
+\graphicspath{{../figures/}{../results/analyse/figures/}}
+% Parts still to complete are marked with \afaire{...}.
 \newcommand{\afaire}[1]{\textcolor{red}{[\textbf{TODO:} #1]}}
 
 \begin{document}
@@ -33,17 +32,19 @@ candidate for graphics processors. Starting from a CUDA implementation of Partic
 Swarm Optimization, we design two GPU versions of DE/rand/1/bin and evaluate them
 on four shifted benchmark functions (Sphere, Rosenbrock, Griewank, Rastrigin) with a
 budget of $10^4 D$ function evaluations. The first version maps one thread to one
-individual; no significant difference in solution quality was detected against a
-sequential C++ implementation (Mann--Whitney, 10 runs), but it is at most $2.3\times$
-faster, because a population of 100 individuals occupies a single streaming
-multiprocessor. The second version maps one block to one individual and one thread
+individual; in a first validation ($N=50$, 10 runs) no significant difference in solution
+quality was detected against a sequential C++ implementation, but with $N=100$ it is at most
+$2.3\times$ faster, because such a population occupies a single streaming multiprocessor. The second version maps one block to one individual and one thread
 to one gene, fuses mutation, crossover, evaluation and replacement into a single
 kernel with a shared-memory tree reduction, and keeps the best-individual search on
 the GPU. On an NVIDIA Tesla T4 it is $1.7\times$ to $14.6\times$ faster than the first
-version, with no significant difference in quality detected, and about $33\times$ faster
-than the sequential code on Rastrigin with $D=100$, $N=100$. We also compare five DE variants on the GPU
-(three crossover rates, current-to-best/1, and the self-adaptive jDE).
-\afaire{final speedups and statistics of the full campaign.}
+version and $35\times$ faster than the sequential code on Rastrigin with $D=100$, $N=100$. We also compare five DE variants on the GPU
+(three crossover rates, current-to-best/1, and the self-adaptive jDE). In a full campaign
+of 1440 runs (4 functions, $D\in\{10,50,100\}$, $N\in\{50,100,500\}$), the second version is
+the fastest in every configuration, from $1.5\times$ to $74.5\times$ faster than the sequential
+code. The generational GPU versions are significantly less accurate than the asynchronous
+sequential DE in 7 to 8 configurations, mostly with $N=500$, and jDE gives a significantly
+lower error than the sequential DE in 19 of 36 configurations.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -182,12 +183,16 @@ measured with CUDA events around the whole algorithm (initialization included),
 after the CUDA context has been created. Budget: $10^4D$ evaluations. Quality is
 compared on 10 independent runs (seeds 1 to 10), timings are means of 3 or 5 runs;
 each table gives its own $N$ and $D$. Results are given as mean $\pm$ standard
-deviation (population standard deviation) of the final error. The full campaign
+deviation of the final error (population standard deviation in the validation tables of
+versions 1 and 2, sample standard deviation in the full campaign). The full campaign
 (step~5) covers $N\in\{50,100,500\}$ and $D\in\{10,50,100\}$. Two samples
 are compared with the Mann--Whitney test \cite{mann1947}, several with
-Kruskal--Wallis \cite{kruskal1952}; multiple comparisons use Holm's correction
-\cite{holm1979}. A non-significant test with 10 runs means that no difference was
-detected, not that the two samples are equivalent. \afaire{add Wilcoxon signed-rank \cite{wilcoxon1945} results if paired comparisons are used in step 6.}
+Kruskal--Wallis \cite{kruskal1952}. When several algorithms are compared with the same
+reference in one configuration, Holm's correction \cite{holm1979} is applied within that
+configuration; Kruskal--Wallis counts over the 36 configurations use raw $p$-values. A non-significant test with 10 runs means that no difference was
+detected, not that the two samples are equivalent. Runs of two algorithms share a
+seed but not a random stream, so they are not paired and the Wilcoxon signed-rank
+test \cite{wilcoxon1945} does not apply; the Mann--Whitney test is the Wilcoxon rank-sum test.
 
 \subsection{Benchmark functions}
 With $z=x-o$ (and $z=x-o+1$ for Rosenbrock), following CEC~2005 \cite{suganthan2005}:
@@ -312,13 +317,103 @@ $D$ & $N$ & v1 & v2 & v1/v2\\
 \label{fig:v1v2}
 \end{figure}
 
-\paragraph{DE variants} \afaire{Table of the five variants (issue \#17), $D=50$, $N=100$, Kruskal--Wallis and ranking per function.}
+\paragraph{DE variants} Table~\ref{tab:var} compares six configurations on the GPU
+($D=50$, $N=100$, 10 runs, same organization as version~2): rand/1 with
+$CR\in\{0.1,0.3,0.5,0.9\}$, current-to-best/1 (ctb1, $CR=0.3$) and jDE. With rand/1,
+$F=0.5$, $CR=0.3$ the variant program reproduces version~2 bit for bit. Kruskal--Wallis
+detects a difference on Sphere, Rosenbrock and Rastrigin ($p<10^{-6}$); all variants
+solve Griewank. jDE has the best mean rank and solves Rastrigin in every run.
+Rastrigin is separable, which favours a small $CR$ ($CR=0.1$ reaches $10^{-11}$); on the
+non-separable Rosenbrock the order is reversed ($CR=0.9$ is best). ctb1 converges
+prematurely (median 341 on Rosenbrock) and costs about 40\,\% more time per run.
 
-\paragraph{Full campaign} \afaire{step 5 (issue \#14): 4 functions $\times$ 3 $D$ $\times$
-3 $N$ $\times$ 10 runs for the sequential DE and the GPU versions; quality tables
-(mean $\pm$ std per configuration), time and speedup curves (step 6, issue \#16),
-Kruskal--Wallis / Wilcoxon tests and comparison with the results of \cite{qin2012}
-(issue \#21).}
+\begin{table}[t]
+\centering
+\caption{DE variants on the GPU, $D=50$, $N=100$: mean final error over 10 runs and mean
+Kruskal--Wallis rank over the four functions (lower is better).}
+\label{tab:var}
+\begin{tabular}{lrrrr}
+\toprule
+Variant & Sphere & Rosenbrock & Rastrigin & rank\\
+\midrule
+jDE            & 0                 & 32.9  & 0                    & 19.2\\
+rand/1, CR=0.1 & 0                 & 47.9  & $2.4\times10^{-11}$  & 28.0\\
+rand/1, CR=0.3 & 0                 & 41.1  & 165.5                & 30.5\\
+rand/1, CR=0.9 & $6.1\times10^{-29}$ & 27.7 & 227.3               & 30.7\\
+rand/1, CR=0.5 & $5.2\times10^{-30}$ & 36.0 & 255.2               & 33.7\\
+ctb1, CR=0.3   & $2.4\times10^{-28}$ & 1726 & 133.8               & 41.0\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Full campaign} The sequential DE, versions 1 and 2 and jDE were run on the
+36 configurations (4 functions, $D\in\{10,50,100\}$, $N\in\{50,100,500\}$, 10 seeds), 1440
+runs in total (CUDA 13, sequential code compiled with \texttt{g++ -O2}); all passed the
+built-in checks. The complete tables (mean $\pm$ sample standard deviation per
+configuration) are in the repository (\texttt{results/analyse}).
+
+\emph{Time.} Table~\ref{tab:camp} and Fig.~\ref{fig:camp}. Version~2 is the fastest
+program in all 36 configurations; its speedup over the sequential code grows with $D$
+and $N$, from $1.5\times$ (Rosenbrock, $D=10$, $N=50$) to $74.5\times$ (Rastrigin, $D=100$,
+$N=500$). Version~1 only pays off with $N=500$ ($6.0\times$ to $9.5\times$); with $N=50$ it
+ranges from $0.7\times$ to $1.5\times$. jDE costs 10 to 33\,\% more time than version~2.
+
+\begin{table}[t]
+\centering
+\caption{Full campaign: mean time of the sequential DE (s) over the four functions
+(10 runs each) and speedups, computed as ratios of these pooled mean times.}
+\label{tab:camp}
+\begin{tabular}{rrrrrr}
+\toprule
+$D$ & $N$ & seq. (s) & v1 & v2 & jDE\\
+\midrule
+10  & 50  & 0.033 & 0.8 & 1.9  & 1.6\\
+10  & 100 & 0.034 & 1.4 & 3.8  & 3.1\\
+10  & 500 & 0.039 & 7.9 & 12.7 & 10.8\\
+50  & 50  & 0.729 & 1.0 & 8.1  & 6.5\\
+50  & 100 & 0.732 & 1.6 & 14.7 & 11.1\\
+50  & 500 & 0.781 & 7.7 & 40.4 & 35.2\\
+100 & 50  & 2.845 & 1.0 & 13.2 & 10.9\\
+100 & 100 & 2.943 & 1.6 & 24.2 & 18.3\\
+100 & 500 & 3.191 & 7.2 & 57.5 & 50.8\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{speedup.pdf}
+\caption{Speedup over the sequential DE as a function of $N$ (full campaign, ratio of
+mean times pooled over the four functions, log scales).}
+\label{fig:camp}
+\end{figure}
+
+\emph{Quality.} Each algorithm was compared with the sequential DE (Mann--Whitney, Holm
+correction within each configuration, $\alpha=0.05$). Version~1: 0 better, 29 not
+different, 7 worse; version~2: 1, 27, 8; jDE: 19, 15, 2 (with Holm's correction over all
+108 tests: 0/31/5, 0/32/4 and 17/18/1). Among the three implementations of DE/rand/1/bin,
+Kruskal--Wallis detects a difference in 9 configurations out of 36, six of them with
+$N=500$ (Sphere for the three dimensions, Griewank and Rosenbrock), where the sequential DE
+reaches an error 1.1 to 4 times lower (e.g.\ $1.1\times10^{-4}$ against $2.3\times10^{-4}$ for
+Sphere, $D=50$). With $N=500$ the budget allows five times fewer generations than with
+$N=100$ (200 to 2000) and the runs have not converged; a plausible explanation is that the
+asynchronous replacement of the sequential code propagates improvements within a
+generation, which the generational GPU versions cannot do. With $N\le100$, no difference is detected in 21 of 24 configurations.
+jDE solves Rastrigin for $D=50$ and $D=100$ with $N=100$ (error 0), where DE/rand/1/bin
+stays near 165 and 535.
+
+\emph{Comparison with cudaDEi.} Qin \emph{et al.}~\cite{qin2012} use the same protocol
+(DE/rand/1/bin, $F=0.5$, $CR=0.3$, $10^4D$ evaluations, same functions and sizes, 25 runs,
+GTX~560). Their reported times are 59 to 365 times ours; with GPUs seven years apart and
+unreported details (floating-point precision, timed region), this ratio does not measure
+the quality of either implementation. For $N\le100$ the errors are equal on Sphere, equal or lower for
+us on Griewank (0 against 0.001 to 0.005), and equal on Rastrigin for $D=10$, but cudaDEi reports much lower
+errors on Rastrigin for $D\ge50$ (2.94 against 165 for $D=50$, $N=100$), on Rosenbrock in
+most configurations, and with $N=500$.
+An independent NumPy implementation of DE/rand/1/bin gives 147 to 174 on Rastrigin
+($D=50$, $N=100$) whatever the bound handling, and 80 with ten times the budget, so our
+values are those expected from this algorithm; we could not identify the cause of the
+gap, which the paper's description does not allow us to reproduce.
 
 % =====================================================================
 \section{Conclusion}\label{sec:conc}
@@ -327,13 +422,19 @@ fast one: with populations of 50 to 100 individuals, the GPU is almost idle. Map
 one individual to one block and one gene to one thread, fusing the four DE
 operators in a single kernel and keeping the population and the best-individual
 search on the device gives a further $1.7\times$ to $14.6\times$ on a Tesla T4, and
-about $33\times$ over a sequential implementation (Rastrigin, $D=100$, $N=100$, an order of
-magnitude), with no significant difference in quality detected (10 runs, $D\le50$).
+$35\times$ over a sequential implementation (Rastrigin, $D=100$, $N=100$), up to $74.5\times$
+with $N=500$. No significant difference in quality is detected in 21 of the 24
+configurations with $N\le100$.
 Measured timings, not theoretical occupancy, determined the block size.
 Limitations: the speedups come from a single GPU and single-core sequential code
-compiled with \texttt{-O2}; quality was compared on 10 runs for $D\le 50$ only; the block-size rule was fitted on 12 cases; the
+compiled with \texttt{-O2}; quality was compared on 10 runs per configuration; the block-size rule was fitted on 12 cases; the
 sequential and GPU programs are two variants (asynchronous and generational) of
-DE/rand/1/bin. \afaire{conclusions of the full campaign and of the variant study.}
+DE/rand/1/bin. Among the variants, the self-adaptive jDE gave the best overall
+ranking at $D=50$, $N=100$; this single configuration does not establish a general
+ranking. Over the full campaign, version~2 is the fastest program in every
+configuration and jDE is the only variant that improves significantly on the sequential
+DE; the generational GPU versions lose some accuracy against the asynchronous
+sequential DE when the population is large and the number of generations small.
 
 \begin{thebibliography}{10}
 \bibitem{storn1997} R.~Storn and K.~Price, ``Differential evolution -- a simple and efficient heuristic for global optimization over continuous spaces,'' \emph{J. Global Optim.}, vol.~11, no.~4, pp.~341--359, 1997.
