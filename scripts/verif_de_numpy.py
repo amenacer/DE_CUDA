@@ -45,3 +45,6 @@ def de(D=50, N=100, F=0.5, CR=0.3, bound="clamp", seed=1, lo=-5.0, hi=5.0, mult=
 if __name__ == "__main__":
     for b in ("clamp", "random", "none"):
         print(b, [round(de(bound=b, seed=s), 1) for s in (1, 2, 3)])
+    # budget multiplié (graine 1) : chaque appel repart de zéro, compter environ 5 min au total
+    for m in (2, 5, 10):
+        print(f"budget x{m}", round(de(seed=1, mult=m), 1))

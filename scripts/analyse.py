@@ -12,8 +12,9 @@ par fonction, sorties dans results/analyse/.
 
 Entrées
 -------
---results      CSV : une ligne par run
-                 colonnes obligatoires : algo,function,dim,pop,run,time_s
+--results      CSV : une ligne par run, au format commun du projet
+                 algo,func,D,N,seed,best_error,time_s,FE  (lu directement)
+                 ou bien : algo,function,dim,pop,run,time_s
                  + soit `error` (= best_fitness - f_bias), soit `best_fitness`
                  colonne optionnelle : seed
 --convergence  CSV (optionnel) : algo,function,dim,pop,run,evals,best_fitness
@@ -227,7 +228,9 @@ def run_stats(df, algos, ref, alpha, paired, scope):
 
     def decide(r):
         if r["p_holm"] < alpha:
-            return "+" if r["median_algo"] < r["median_ref"] else "-"
+            if r["median_algo"] != r["median_ref"]:
+                return "+" if r["median_algo"] < r["median_ref"] else "-"
+            return "+" if r["prob_algo_better"] > 0.5 else "-"  # médianes égales : on départage par l'effet
         return "="
 
     pw["decision"] = pw.apply(decide, axis=1)
@@ -310,7 +313,8 @@ def time_tables(df, algos, ref, outdir):
     for a in others:
         csv_cols += [f"T_{a}", f"speedup_{a}"]
     base = os.path.join(outdir, "tables", "time_speedup")
-    note = (f"\nTemps moyens (s) sur toutes les fonctions et tous les runs. Speedup = T_{ref} / T_algo "
+    note = (f"\nTemps moyens (s) sur les 4 fonctions et tous les runs (le speedup est le rapport de ces moyennes, "
+            f"pas la moyenne des speedups par fonction : voir speedup_par_fonction.md). Speedup = T_{ref} / T_algo "
             f"(un speedup < 1 signifie que l'algorithme est plus lent que la référence).\n")
     write(base + ".md", "### Temps d'exécution et speedup\n\n" + md_table(header, rows_md) + note)
     write(base + ".tex", tex_table(header, rows_tex, "Temps d'exécution moyen (s) et speedup.", "tab:time"))
