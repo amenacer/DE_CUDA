@@ -7,6 +7,8 @@
 \usepackage{cite}
 \usepackage{url}
 \usepackage{placeins}
+\usepackage{tikz}
+\usetikzlibrary{shapes.geometric,arrows.meta}
 
 \graphicspath{{../figures/}}
 
@@ -137,9 +139,46 @@ domains and the shift vector $o$ are written once in a header compiled for the h
 device, and $o$ is produced by a deterministic generator (splitmix64) seeded with the
 function and $D$, so all programs optimize exactly the same problem.
 
+% ---------------------------------------------------------------- use case
 \begin{figure}[!t]
 \centering
-\includegraphics[width=\columnwidth]{uml_use_case.pdf}
+\resizebox{\columnwidth}{!}{%
+\begin{tikzpicture}[font=\scriptsize,
+  uc/.style={ellipse, draw, fill=black!4, align=center, inner sep=1pt, minimum width=2.5cm, minimum height=0.75cm},
+  inc/.style={-{Stealth[length=4pt]}, dashed},
+  lab/.style={font=\tiny, fill=white, inner sep=1pt}]
+  % actors
+  \newcommand{\actor}[3]{%
+    \begin{scope}[shift={(#1,#2)}]
+      \draw (0,0.32) circle (0.09);
+      \draw (0,0.23) -- (0,0.02) (-0.14,0.16) -- (0.14,0.16)
+            (0,0.02) -- (-0.1,-0.14) (0,0.02) -- (0.1,-0.14);
+      \node[below, align=center] at (0,-0.14) {#3};
+    \end{scope}}
+  \actor{0}{3.05}{Campaign\\script}
+  \actor{0}{1.15}{Experimenter}
+  % system
+  \draw[rounded corners=2pt] (0.85,-0.65) rectangle (8.45,3.95);
+  \node[anchor=north east, font=\scriptsize\itshape] at (8.4,3.92) {DE\_CUDA system};
+  \node[uc] (camp) at (2.35,3.05) {Run full campaign};
+  \node[uc] (run)  at (2.35,1.55) {Run one program\\(seq., v1, v2, variant)};
+  \node[uc] (ana)  at (2.35,0.05) {Analyse results\\(tables, tests)};
+  \node[uc] (cho)  at (6.85,3.05) {Choose $f$, $D$, $N$, seed};
+  \node[uc] (chk)  at (6.85,1.95) {Check run health};
+  \node[uc] (csv)  at (6.85,0.85) {Append row to CSV};
+  \node[uc] (cmp)  at (6.85,-0.2) {Compare with\\reference paper};
+  % associations
+  \draw (0.25,3.15) -- (camp);
+  \draw (0.25,1.25) -- (camp);
+  \draw (0.25,1.25) -- (run);
+  \draw (0.25,1.25) -- (ana);
+  % include / extend
+  \draw[inc] (camp) -- node[lab, right] {include} (run);
+  \draw[inc] (run) -- node[lab, sloped] {include} (cho);
+  \draw[inc] (run) -- node[lab, sloped] {include} (chk);
+  \draw[inc] (run) -- node[lab, sloped] {include} (csv);
+  \draw[inc] (cmp) -- node[lab, below] {extend} (ana);
+\end{tikzpicture}}
 \caption{UML use case diagram of the software.}
 \label{fig:usecase}
 \end{figure}
@@ -175,13 +214,43 @@ in version~1, which no longer suits version~2: thread $j$ reads $o_j$, so a warp
 different addresses and these reads are serialized; reading $o$ through the read-only cache
 would avoid it. We did not measure the effect of either choice.
 
-\begin{figure*}[!t]
+% ---------------------------------------------------------------- sequence
+\begin{figure}[!t]
 \centering
-\includegraphics[width=0.88\textwidth]{uml_sequence_v2.pdf}
-\caption{UML sequence diagram of one run of version~2. In the main loop the host only launches
-kernels and swaps two pointers; the population never leaves the GPU.}
+\resizebox{\columnwidth}{!}{%
+\begin{tikzpicture}[font=\scriptsize, y=0.42cm,
+  hd/.style={draw, fill=black!6, minimum width=1.9cm, minimum height=0.5cm, align=center},
+  msg/.style={-{Stealth[length=4pt]}},
+  ret/.style={-{Stealth[length=4pt]}, dashed},
+  note/.style={draw, fill=yellow!20, inner sep=2pt, align=center}]
+  \def\xh{0} \def\xk{3.75} \def\xg{7.5}
+  \node[hd] at (\xh,0) {Host (CPU)};
+  \node[hd] at (\xk,0) {GPU kernels};
+  \node[hd] at (\xg,0) {Global memory};
+  \foreach \x in {\xh,\xk,\xg} \draw[black!45] (\x,-0.6) -- (\x,-18.4);
+  % before the loop
+  \draw[msg] (\xh,-1.8) -- node[above] {shift $o$ $\to$ constant memory} (\xg,-1.8);
+  \node[note, minimum width=7.9cm] at (3.75,-2.9) {start timer};
+  \draw[msg] (\xh,-4.4) -- node[above] {init RNG, population, fitness} (\xk,-4.4);
+  % loop frame
+  \draw[black!70] (-0.95,-5.1) rectangle (8.45,-15.0);
+  \node[draw, fill=white, anchor=north west, inner sep=1.5pt] (lp) at (-0.95,-5.1) {loop};
+  \node[anchor=west] at (lp.east) {[until $10^4D$ evaluations]};
+  \draw[msg] (\xh,-7.0) -- node[above] {kernel P ($N$ threads)} (\xk,-7.0);
+  \draw[msg] (\xk,-8.2) -- node[above] {$r_1,r_2,r_3,j_{\mathrm{rand}}$} (\xg,-8.2);
+  \draw[msg] (\xh,-9.6) -- node[above] {kernel MCER ($N$ blocks $\times\,T$)} (\xk,-9.6);
+  \node[note] at (\xk,-11.0) {trial in shared memory,\\$f$ by tree reduction};
+  \draw[msg] (\xk,-12.9) -- node[above] {winners $\to$ \texttt{pop\_out}} (\xg,-12.9);
+  \node[note, anchor=west] at (-0.75,-14.1) {swap \texttt{pop\_in}/\texttt{pop\_out}};
+  % after the loop
+  \draw[msg] (\xh,-16.0) -- node[above] {kernel argmin (1 block)} (\xk,-16.0);
+  \draw[ret] (\xk,-17.2) -- node[above] {best individual (16 bytes)} (\xh,-17.2);
+  \node[note, minimum width=7.9cm] at (3.75,-18.2) {stop timer};
+\end{tikzpicture}}
+\caption{UML sequence diagram of one run of version~2. In the main loop the host only
+launches kernels and swaps two pointers; the population never leaves the GPU.}
 \label{fig:seq}
-\end{figure*}
+\end{figure}
 
 \paragraph{Block size} $T$ is a power of two chosen automatically: $T=32$ if $D\le32$ or
 $N\ge4\times\#\mathrm{SM}$, and $T=64$ otherwise. The rule comes from a measured sweep
