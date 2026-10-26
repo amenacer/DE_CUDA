@@ -3,7 +3,7 @@
 Entrees : results/campagne.csv et results/analyse/tables/stats_pairwise.csv
 Sortie  : lignes LaTeX sur la sortie standard (moyenne +- ecart-type d'echantillon,
           exposant + / - si l'algorithme est significativement meilleur / pire que sde,
-          Mann-Whitney avec correction de Holm dans la configuration).
+          Mann-Whitney, correction de Holm sur les 108 tests de la campagne).
 
 Usage : python scripts/table_erreurs_n100.py [N]   (N = 50, 100 ou 500 ; 100 par defaut)
 """
@@ -11,6 +11,7 @@ import math
 import sys
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 RACINE = Path(__file__).resolve().parent.parent
@@ -18,6 +19,24 @@ N = int(sys.argv[1]) if len(sys.argv) > 1 else 100
 FONCTIONS = [("sphere", "Sphere"), ("rosenbrock", "Rosenbrock"),
              ("griewank", "Griewank"), ("rastrigin", "Rastrigin")]
 ALGOS = ["sde", "cuda_v1", "cuda_v2", "gpu_jde"]
+
+
+def holm(p, alpha=0.05):
+    """Rejets de Holm (pas a pas descendant) sur un vecteur de p-values."""
+    p = np.asarray(p, dtype=float)
+    rejet = np.zeros(len(p), dtype=bool)
+    for k, i in enumerate(np.argsort(p)):
+        if p[i] > alpha / (len(p) - k):
+            break
+        rejet[i] = True
+    return rejet
+
+
+def decisions_holm_global(stats):
+    """'+' / '-' / '=' par test, Holm sur les 108 tests (3 algos x 36 configurations)."""
+    rejet = holm(stats["p_raw"].values)
+    meilleur = stats["prob_algo_better"].values > 0.5
+    return np.where(~rejet, "=", np.where(meilleur, "+", "-"))
 
 
 def fmt(x):
@@ -34,6 +53,7 @@ def fmt(x):
 def main():
     camp = pd.read_csv(RACINE / "results" / "campagne.csv")
     stats = pd.read_csv(RACINE / "results" / "analyse" / "tables" / "stats_pairwise.csv")
+    stats = stats.assign(decision=decisions_holm_global(stats))
     camp = camp[camp["N"] == N]
     for k, (f, nom) in enumerate(FONCTIONS):
         for i, d in enumerate([10, 50, 100]):

@@ -4,15 +4,11 @@
 \usepackage{amsmath,amssymb}
 \usepackage{graphicx}
 \usepackage{booktabs}
-\usepackage{algorithm}
-\usepackage{algpseudocode}
 \usepackage{cite}
-\usepackage{xcolor}
 \usepackage{url}
+\usepackage{placeins}
 
-\graphicspath{{../figures/}{../results/analyse/figures/}}
-% Parts still to complete are marked with \afaire{...}.
-\newcommand{\afaire}[1]{\textcolor{red}{[\textbf{TODO:} #1]}}
+\graphicspath{{../figures/}}
 
 \begin{document}
 
@@ -20,32 +16,26 @@
 
 \author{
 \IEEEauthorblockN{Amina Menacer, Lounis Mesrour, Lisa Adrar}
-\IEEEauthorblockA{Master 2 IMDS, Université de Haute-Alsace, Mulhouse, France}
+\IEEEauthorblockA{Master 2 IMDS, Universit\'e de Haute-Alsace, Mulhouse, France}
 }
 
 \maketitle
 
 \begin{abstract}
-Differential Evolution (DE) is a population-based optimizer whose individuals build
-and evaluate their trial vectors independently, which makes it a natural candidate for
-graphics processors. Starting from a CUDA implementation of Particle Swarm Optimization
-provided in the course, we design two GPU versions of DE/rand/1/bin ($F=0.5$, $CR=0.3$)
-and a self-adaptive variant (jDE), and compare them with a sequential C++ DE on four
-shifted benchmark functions (Sphere, Rosenbrock, Griewank, Rastrigin), with
-$D\in\{10,50,100\}$, $N\in\{50,100,500\}$, a budget of $10^4D$ evaluations and 10 runs per
-configuration: 1440 runs on an NVIDIA Tesla T4. Version~1 maps one thread to one
-individual; it occupies only a few of the 40 streaming multiprocessors and runs from
-$0.7\times$ to $9.5\times$ the speed of the sequential code. Version~2 maps one block to one
-individual and one thread to one gene, fuses mutation, crossover, evaluation and
-replacement into a single kernel with a shared-memory tree reduction, and keeps the
-population and the best-individual search on the GPU; it is the fastest program in all
-36 configurations, from $1.5\times$ to $74.5\times$ faster than the sequential DE. Against the
-sequential DE (Mann--Whitney test, Holm correction), versions 1 and 2 show no significant
-difference in quality in 29 and 27 configurations and are less accurate in 7 and 8, mostly
-with $N=500$; a generational sequential DE run as a control reproduces these differences,
-which therefore come from the replacement scheme, not from the GPU.
-jDE, 10 to 33\,\% slower than version~2, is significantly more accurate than the sequential
-DE in 19 configurations and solves Rastrigin for $D=50$ and $D=100$ with $N=100$.
+Differential Evolution (DE) builds and evaluates its trial vectors independently, which
+makes it well suited to GPUs, but a naive mapping of one thread to one individual leaves
+most of the device idle. Starting from a CUDA Particle Swarm Optimization code, we
+implement DE/rand/1/bin on the GPU with two mappings, one thread per individual
+(version~1) and one block per individual with one thread per gene (version~2, following
+the design of cudaDEi), together with the self-adaptive jDE. On four shifted benchmark
+functions, three dimensions and three population sizes (1440 runs on a Tesla T4), version~2
+is the fastest program in every configuration, $1.9\times$ to $58\times$ faster than a
+sequential C++ DE (up to $74\times$ for a single function). With Holm's correction over all
+tests, the GPU versions of DE/rand/1/bin are less accurate than the sequential DE only with
+$N=500$; a sequential DE with the same generational replacement is not distinguishable from
+them in any configuration, so the loss comes from the replacement scheme, not from the GPU.
+jDE is more accurate than the sequential DE in 17 of 36 configurations. Finally, an
+independent implementation reproduces our errors but not those published for cudaDEi.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -54,54 +44,68 @@ CUDA, GPU, Differential Evolution, Massively Parallel Computing, Global Optimiza
 
 % =====================================================================
 \section{Introduction}
-Population-based metaheuristics spend most of their time evaluating candidate
-solutions. In Differential Evolution (DE) \cite{storn1997}, each of the $N$ individuals
-produces one trial vector per generation from three other individuals of the
-current population; these $N$ constructions and evaluations are independent, and
-inside each of them the $D$ coordinates are processed almost independently as well.
-This two-level parallelism (individuals, then genes) fits the hierarchy of a GPU
-(blocks, then threads).
+Population-based metaheuristics spend most of their time evaluating candidate solutions.
+In Differential Evolution (DE)~\cite{storn1997}, each of the $N$ individuals builds a trial
+vector from three other individuals and evaluates it; these $N$ tasks are independent, and
+inside each of them the $D$ coordinates are processed almost independently as well. This
+two-level parallelism matches the hierarchy of a GPU, made of blocks of threads.
 
-This work was carried out in the massively parallel computing course of the Master~2
-IMDS. The starting point is a CUDA implementation of Particle Swarm Optimization (PSO)
-\cite{kennedy1995} provided by the course, which we transform into a DE, following the
-approach of Qin et~al.~\cite{qin2012}. Our contributions are:
+Several CUDA implementations of DE exist. cudaDE~\cite{veronese2010} assigns one block of
+64 threads to one individual on a fixed grid; FPDE~\cite{dominguez2011} uses a separate kernel
+per DE operation; cudaDEi~\cite{qin2012} fuses mutation, crossover, evaluation and replacement
+into one kernel, assigns one thread to each gene and chooses the launch configuration from
+the problem. Qin \emph{et al.}\ show that the first two designs suffer from many
+global-memory transfers between kernels and from low occupancy, and can be slower than a
+sequential DE for small problems.
+
+This paper does not propose a new design: our version~2 follows the gene-level design of
+cudaDEi. Our contributions are on its evaluation:
 \begin{itemize}
-  \item a diagnosis of the PSO code (race condition on global temporaries, wrong
-        Griewank product, missing shift and bounds, best particle computed on the
-        CPU at every iteration), which motivated a common, tested interface shared by
-        the sequential and GPU programs;
-  \item a GPU implementation of DE/rand/1/bin that maps one block to one individual and
-        one thread to one gene (version~2), compared with the direct one-thread-per-individual
-        mapping (version~1) and validated against a sequential C++ implementation with
-        statistical tests and a generational control;
-  \item a measured analysis of the block size, occupancy and speedup on a Tesla T4;
-  \item a comparison of DE variants (crossover rate, current-to-best/1, jDE \cite{brest2006})
-        running on the GPU.
+  \item two GPU mappings of DE/rand/1/bin and a GPU jDE~\cite{brest2006}, built on an
+        interface shared with a sequential reference and checked at every run;
+  \item a campaign of 1440 runs analysed with one statistical protocol (Mann--Whitney
+        tests with Holm's correction over all comparisons);
+  \item a control experiment, a sequential DE with generational replacement, which locates
+        the cause of the accuracy differences between the GPU and sequential programs;
+  \item a reproduction attempt of the published cudaDEi errors with an independent
+        implementation.
 \end{itemize}
-Section~\ref{sec:gpu} recalls the CUDA programming model, Section~\ref{sec:de} describes
-the sequential and parallel DE, Section~\ref{sec:exp} reports the experiments, and
-Section~\ref{sec:conc} concludes.
+Section~\ref{sec:gpu} recalls the CUDA model, Section~\ref{sec:de} describes the sequential
+and parallel DE, Section~\ref{sec:exp} reports the experiments and Section~\ref{sec:conc}
+concludes.
 
 % =====================================================================
 \section{GPU Programming}\label{sec:gpu}
-A CUDA GPU is made of streaming multiprocessors (SMs); the Tesla T4 used here has
-40 SMs, each running at most 1024 resident threads and offering 48~KB of shared
-memory per block. A kernel is launched on a grid of blocks; the threads of a block
-run on the same SM, are scheduled by groups of 32 (warps), can synchronize with
-\texttt{\_\_syncthreads()} and share a fast on-chip memory. Global memory is large
-but slow; it is used efficiently when consecutive threads read consecutive
-addresses (coalesced accesses). Constant memory is cached and broadcast to all the
-threads of a warp that read the same address. Random numbers are generated on the
-device with cuRAND; we use the counter-based Philox generator \cite{salmon2011}, which
-gives each thread an independent subsequence of a single seed.
+CUDA programs run on a heterogeneous system: the host (CPU) executes ordinary C++ code and
+launches \emph{kernels}, functions marked \texttt{\_\_global\_\_} that the device (GPU)
+executes with many threads; functions marked \texttt{\_\_device\_\_} are called from
+kernels, and \texttt{\_\_host\_\_ \_\_device\_\_} functions are compiled for both sides.
+A kernel is launched on a grid of blocks with the syntax
+\texttt{kernel<<<blocks, threads>>>}; each thread finds its position with
+\texttt{blockIdx} and \texttt{threadIdx}.
+
+The GPU is made of streaming multiprocessors (SMs); the Tesla T4 used here has 40 SMs,
+each holding at most 1024 resident threads and 16 resident blocks. All the threads of a
+block run on the same SM, are executed by groups of 32 (warps), can synchronize with
+\texttt{\_\_syncthreads()} and share a fast on-chip \emph{shared memory} (48~KB per block).
+Threads of different blocks can only communicate through \emph{global memory}, which is large
+but has a high latency; its accesses are efficient when the consecutive threads of a warp
+read consecutive addresses (coalesced accesses). \emph{Constant memory} is a small cached
+memory whose value is broadcast when all the threads of a warp read the same address; reads
+of different addresses by one warp are serialized.
+
+The \emph{occupancy} of an SM is the ratio of resident warps to the maximum; it is limited by
+the block size, the registers and the shared memory used per block. High occupancy helps to
+hide memory latency, but does not guarantee speed. Random numbers are generated on the
+device with cuRAND; we use the counter-based Philox generator~\cite{salmon2011}, which gives
+each thread an independent subsequence of one seed.
 
 % =====================================================================
 \section{Differential Evolution}\label{sec:de}
 \subsection{Overview of the sequential DE}
-DE/rand/1/bin keeps a population $\{x_1,\dots,x_N\}\subset[\ell,u]^D$. At each
-generation, for every individual $i$, three distinct indices $r_1,r_2,r_3\neq i$ are
-drawn and a mutant is built:
+DE/rand/1/bin evolves a population $\{x_1,\dots,x_N\}\subset[\ell,u]^D$. At each generation,
+for every target $x_i$, three distinct indices $r_1,r_2,r_3\neq i$ are drawn and a mutant is
+built:
 \begin{equation}
 v_i = x_{r_1} + F\,(x_{r_2}-x_{r_3}).
 \label{eq:mut}
@@ -112,129 +116,118 @@ u_{i,j} = \begin{cases} v_{i,j} & \text{if } \mathrm{rand}_j < CR \text{ or } j=
 x_{i,j} & \text{otherwise,}\end{cases}
 \label{eq:cross}
 \end{equation}
-where $j_{\mathrm{rand}}$ guarantees that at least one gene comes from the mutant.
-Genes leaving the domain are clipped to $[\ell,u]$. Selection keeps the better of the
-two: $x_i \leftarrow u_i$ if $f(u_i)\le f(x_i)$. Unless stated otherwise, we use $F=0.5$ and $CR=0.3$,
-and a budget of $10^4 D$ evaluations of $f$, counted exactly (the initial
-population costs $N$ evaluations and the last generation may be partial).
+where $j_{\mathrm{rand}}$ guarantees that at least one gene comes from the mutant. Genes
+leaving the domain are clipped to $[\ell,u]$, and $u_i$ replaces $x_i$ if
+$f(u_i)\le f(x_i)$. We use $F=0.5$, $CR=0.3$ and a budget of $10^4D$ evaluations, counted
+exactly (the initial population costs $N$ evaluations and the last generation may be
+partial).
 
-The sequential reference (C++, one core) replaces $x_i$ as soon as its trial wins, so
-later individuals of the same generation already see the new value. On the GPU the
-replacement must take place at the end of the generation (a \emph{generational}
-DE), otherwise a thread could read $x_{r_1}$ while another thread overwrites it. The
-two programs are therefore two variants of the same algorithm; we compare them
-statistically in Section~\ref{sec:exp}.
+The sequential reference (C++, one core) replaces $x_i$ as soon as its trial wins, so the
+next individuals of the same generation already see the new value (\emph{asynchronous} DE).
+On the GPU, all trials of a generation are built in parallel, so the replacement takes place
+at the end of the generation (\emph{generational} DE); otherwise a thread could read
+$x_{r_1}$ while another one overwrites it. The sequential program also has a generational
+mode, used as a control in Section~\ref{sec:exp}.
 
 \subsection{Massively parallel DE}
-\paragraph{Use cases} Fig.~\ref{fig:usecase} gives the UML use case diagram of the
-software. The experimenter, or the campaign script, runs the sequential DE, a GPU
-version or a variant; each run takes a function, $D$, $N$ and a seed, checks its own
-health and appends one row to a CSV file shared by all programs, which the analysis
-scripts read to produce the tables, figures and tests of Section~\ref{sec:exp}.
+\paragraph{Software and use cases} Fig.~\ref{fig:usecase} shows the use cases. Every
+program (sequential, GPU, variants) takes a function, $D$, $N$ and a seed, checks its own
+result and appends one row to a CSV file shared by all programs. The four functions, their
+domains and the shift vector $o$ are written once in a header compiled for the host and the
+device, and $o$ is produced by a deterministic generator (splitmix64) seeded with the
+function and $D$, so all programs optimize exactly the same problem.
 
-\begin{figure}[t]
+\begin{figure}[!t]
 \centering
 \includegraphics[width=\columnwidth]{uml_use_case.pdf}
-\caption{UML use case diagram of the DE\_CUDA software.}
+\caption{UML use case diagram of the software.}
 \label{fig:usecase}
 \end{figure}
 
-\paragraph{Common interface} The four functions, their domains, the shift vector $o$
-and the CSV format are written once in a header used by the sequential and the GPU
-programs (\texttt{\_\_host\_\_ \_\_device\_\_} functions). The shift is generated by a
-deterministic generator (splitmix64) seeded with the function and the dimension, so
-both programs optimize exactly the same problem. Each function returns the error
-$f(x)-f(x^\ast)$, which is $0$ at the optimum.
+\paragraph{Version 1: one thread per individual} The direct translation of the sequential
+code uses three kernels per generation: mutation and crossover into a trial array, evaluation
+of the trials, and selection. Writing the trials to their own array and selecting in a
+separate kernel avoids any race condition, and the population stays on the device. This
+mapping has two deficiencies. (i)~With $N\le500$ and 128 threads per block, it launches at
+most four blocks, so at most 4 of the 40 SMs work (one SM for $N=100$). (ii)~Each thread loops
+over the $D$ genes of its individual, so consecutive threads read addresses $D$ apart and the
+global-memory accesses are not coalesced.
 
-\paragraph{Version 1 (one thread per individual)} Three kernels per generation:
-mutation and crossover into a separate trial array, evaluation of the trials, and
-selection. Because trials are written in their own array and selection runs in a
-separate kernel, there is no race condition. The shift vector lives in constant
-memory and the population never leaves the GPU; only the $N$ final fitness values
-are copied back.
-
-\paragraph{Version 2 (one block per individual, one thread per gene)} Two kernels
-per generation:
+\paragraph{Version 2: one block per individual, one thread per gene} Version~2 removes both
+deficiencies, following cudaDEi~\cite{qin2012}. Each generation runs two kernels:
 \begin{itemize}
-  \item \textbf{kernel P}: one thread per individual draws $r_1,r_2,r_3$ and
-        $j_{\mathrm{rand}}$ and stores them as an \texttt{int4};
-  \item \textbf{kernel MCER} (Mutation, Crossover, Evaluation, Replacement): block $i$
-        builds trial $u_i$ in shared memory, thread $t$ handling genes
-        $t, t+T, t+2T,\dots$; each thread computes its part of $f(u_i)$ and the block
-        sums them by a tree reduction in $\log_2 T$ steps (Griewank needs a sum and
-        a product, reduced together); thread 0 compares with $f(x_i)$ and the block
-        writes the winner into a second population buffer.
+  \item \textbf{kernel P}: one thread per individual draws $r_1,r_2,r_3$ and $j_{\mathrm{rand}}$
+        and stores them as one \texttt{int4};
+  \item \textbf{kernel MCER} (Mutation, Crossover, Evaluation, Replacement): block $i$ builds
+        $u_i$ in shared memory, thread $t$ handling genes $t, t+T, \dots$; each thread computes
+        its part of $f(u_i)$, the block sums the parts by a tree reduction in $\log_2 T$ steps
+        (Griewank reduces a sum and a product together), and the winner of $u_i$ and $x_i$ is
+        written to a second population buffer.
 \end{itemize}
-The two population buffers are swapped by exchanging pointers (double buffering),
-which removes both the copy and the race condition. The best individual is found by
-an argmin reduction kernel (512 threads, ties broken by the smallest index), so the
-only transfer inside the timed region is a 16-byte structure. Consecutive threads read
-consecutive genes, so global-memory accesses are coalesced, whereas in version~1
-threads read with a stride of $D$. The shift vector stays in constant memory, as in
-version~1, but this choice no longer suits version~2: thread $j$ reads $o_j$, so the threads
-of a warp read different addresses and the constant cache serializes these reads, whereas
-in version~1 all the threads read the same $o_j$ at the same time and the value is
-broadcast. Reading $o$ from global memory through the read-only cache would avoid the
-serialization; we did not measure the difference. Unlike cudaDEi~\cite{qin2012}, kernels P
-and MCER run one after the other in the default stream; overlapping them on two streams is
-left for future work. Fig.~\ref{fig:seq} gives the UML sequence diagram of
-one run of version~2, from the command line to the CSV row.
+The grid now has $N$ blocks of $T$ threads instead of $N$ threads, and consecutive threads read
+consecutive genes. The two population buffers are swapped by exchanging pointers (double
+buffering). After the last generation, an argmin kernel finds the best individual, so the only
+transfer in the timed region is a 16-byte structure. Fig.~\ref{fig:seq} shows one run.
 
-\begin{figure*}[t]
+Two differences with cudaDEi remain. Kernels P and MCER run one after the other in one stream,
+whereas cudaDEi overlaps them on two streams. And the shift vector stays in constant memory as
+in version~1, which no longer suits version~2: thread $j$ reads $o_j$, so a warp reads 32
+different addresses and these reads are serialized; reading $o$ through the read-only cache
+would avoid it. We did not measure the effect of either choice.
+
+\begin{figure*}[!t]
 \centering
-\includegraphics[width=0.9\textwidth]{uml_sequence_v2.pdf}
-\caption{UML sequence diagram of one run of version~2. Inside the main loop, the host
-only launches kernels and swaps two pointers; the population never leaves the GPU, and
-the only transfer inside the timed region is the 16-byte best individual.}
+\includegraphics[width=0.88\textwidth]{uml_sequence_v2.pdf}
+\caption{UML sequence diagram of one run of version~2. In the main loop the host only launches
+kernels and swaps two pointers; the population never leaves the GPU.}
 \label{fig:seq}
 \end{figure*}
 
-\paragraph{Block size} The number of threads per block $T$ (a power of two) is chosen
-automatically: $T=32$ if $D\le 32$ or $N\ge 4\times\#\mathrm{SM}$, and $T=64$
-otherwise. The rule comes from a measured sweep (Section~\ref{sec:exp}).
+\paragraph{Block size} $T$ is a power of two chosen automatically: $T=32$ if $D\le32$ or
+$N\ge4\times\#\mathrm{SM}$, and $T=64$ otherwise. The rule comes from a measured sweep
+(Section~\ref{sec:time}).
 
 \paragraph{Variants} The same organization supports current-to-best/1,
-$v_i = x_i + F(x_{\mathrm{best}}-x_i) + F(x_{r_1}-x_{r_2})$, where $x_{\mathrm{best}}$
-is found by the argmin kernel before kernel MCER, and jDE \cite{brest2006}, where every
-individual carries its own $F_i$ and $CR_i$ (initially $0.5$ and $0.9$); with
+$v_i = x_i + F(x_{\mathrm{best}}-x_i) + F(x_{r_1}-x_{r_2})$, and jDE~\cite{brest2006}, where
+every individual carries its own $F_i$ and $CR_i$ (initially $0.5$ and $0.9$); with
 probability $0.1$ each, kernel P proposes $F'\sim\mathcal{U}(0.1,1]$ and
 $CR'\sim\mathcal{U}(0,1]$, and the new values survive only if the trial wins.
 
-\paragraph{Built-in checks} Every run checks, outside the timed region, that all genes
-are finite and inside the domain and that the evaluation count does not exceed the
-budget. Version~2 and the variants also check that the GPU argmin equals a CPU
-minimum and that the fitness obtained by the parallel reduction equals the CPU
-evaluation of the same vector (difference below $10^{-9}\max(1,|f|)$, i.e.\ relative
-far from the optimum and absolute near it). Every version~2
-and variant run we recorded passed these checks.
+\paragraph{Built-in checks} Outside the timed region, every run checks that all genes are
+finite and inside the domain and that the evaluation count does not exceed the budget.
+Version~2 and the variants also check that the GPU argmin equals a CPU minimum and that the
+fitness obtained by the parallel reduction equals a CPU evaluation of the same vector, within
+$10^{-9}\max(1,|f|)$. All the recorded runs passed these checks.
 
 % =====================================================================
 \section{Experimental Results}\label{sec:exp}
 \subsection{Setup}
-GPU: NVIDIA Tesla T4 (Google Colab, 40 SMs); CPU: Intel Xeon @ 2.00~GHz (one core
-for the sequential program); \texttt{nvcc -O3 -arch=sm\_75} with CUDA 12 for the
-validation experiments (Tables I to IV) and CUDA 13 for the full campaign, whose
-sequential code is compiled with \texttt{g++ -O2} (one core, no explicit vectorization or
-multithreading): all speedups are relative to this baseline. All computations are in
-double precision, which the T4 executes at 1/32 of its single-precision rate; this
-penalizes the GPU. GPU times are measured with CUDA events from the initialization of
-the random generators and of the population to the copy of the best individual; the
-creation of the CUDA context, the allocations, the copy of the shift vector and the final
-copy of the population used for the checks are excluded. Budget: $10^4D$ evaluations. Quality is
-compared on 10 independent runs (seeds 1 to 10), timings are means of 3 or 5 runs;
-each table gives its own $N$ and $D$. Results are given as mean $\pm$ standard
-deviation of the final error (population standard deviation in the validation tables of
-versions 1 and 2, sample standard deviation in the full campaign). The full campaign covers $N\in\{50,100,500\}$ and $D\in\{10,50,100\}$. Two samples
-are compared with the Mann--Whitney test \cite{mann1947}, several with
-Kruskal--Wallis \cite{kruskal1952}. When several algorithms are compared with the same
-reference in one configuration, Holm's correction \cite{holm1979} is applied within that
-configuration; Kruskal--Wallis counts over the 36 configurations use raw $p$-values. A non-significant test with 10 runs means that no difference was
-detected, not that the two samples are equivalent. Runs of two algorithms share a
-seed but not a random stream, so they are not paired and the Wilcoxon signed-rank
-test \cite{wilcoxon1945} does not apply; the Mann--Whitney test is the Wilcoxon rank-sum test.
+GPU: NVIDIA Tesla T4 (Google Colab, 40 SMs), \texttt{nvcc -O3 -arch=sm\_75}; CPU: Intel
+Xeon at 2.00~GHz, one core, \texttt{g++ -O2}, without explicit vectorization or
+multithreading. All computations are in double precision, which the T4 executes at 1/32 of
+its single-precision rate. The full campaign (CUDA~13) runs the sequential DE, versions 1 and
+2 and jDE on 4 functions, $D\in\{10,50,100\}$ and $N\in\{50,100,500\}$, with seeds 1 to 10:
+1440 runs. The block-size sweep (Table~\ref{tab:bloc}) was measured earlier with CUDA~12.
+
+\emph{Timing.} The sequential time runs from the initialization of the population to the end
+of the main loop. The GPU time, measured with CUDA events, runs from the initialization of the
+random generators and of the population to the copy of the best individual; it excludes the
+creation of the CUDA context, the allocations, the copy of $o$ and the final copy of the
+population used by the checks. Identical GPU runs differ by less than 1\,\% in time, whereas
+the sequential times vary by 10 to 17\,\% between Colab sessions; speedups are therefore given
+with two significant digits.
+
+\emph{Statistics.} Each GPU algorithm is compared with the sequential DE by a two-sided
+Mann--Whitney test~\cite{mann1947} on the 10 final errors, with Holm's
+correction~\cite{holm1979} over the 108 tests of the campaign (3 algorithms $\times$ 36
+configurations), $\alpha=0.05$. Runs share a seed but not a random stream, so they are not
+paired and the signed-rank test~\cite{wilcoxon1945} does not apply. Kruskal--Wallis
+tests~\cite{kruskal1952} are corrected over the 36 configurations. Two identical samples give
+$p=1$. A non-significant result with 10 runs means that no difference was detected, not that
+the algorithms are equivalent.
 
 \subsection{Benchmark functions}
-With $z=x-o$ (and $z=x-o+1$ for Rosenbrock), following CEC~2005 \cite{suganthan2005}:
+With $z=x-o$ (and $z=x-o+1$ for Rosenbrock), following CEC~2005~\cite{suganthan2005}:
 \begin{align*}
 f_{\mathrm{Sph}}(x) &= \textstyle\sum_{j=1}^{D} z_j^2,\\
 f_{\mathrm{Ros}}(x) &= \textstyle\sum_{j=1}^{D-1} 100\,(z_j^2-z_{j+1})^2+(z_j-1)^2,\\
@@ -242,143 +235,162 @@ f_{\mathrm{Gri}}(x) &= \textstyle\sum_{j} \frac{z_j^2}{4000} - \prod_{j}\cos\fra
 f_{\mathrm{Ras}}(x) &= \textstyle\sum_{j} z_j^2 - 10\cos(2\pi z_j) + 10,
 \end{align*}
 on $[-100,100]^D$ (Sphere, Rosenbrock), $[-600,600]^D$ (Griewank) and $[-5,5]^D$ (Rastrigin).
-The shift $o$ is drawn uniformly in 80\,\% of the domain; the CEC bias is not added,
-so that small errors are not absorbed by it. The resolution remains limited by double
-precision: for Griewank, $1-\prod\cos$ cancels below about $10^{-16}$, so an error of 0 in
-the tables means an error below this resolution, not $x=o$ exactly. The functions are
-shifted but not rotated; Sphere and Rastrigin are separable, and Griewank becomes nearly
-separable as $D$ grows.
+The shift $o$ is drawn uniformly in 80\,\% of the domain and the CEC bias is not added. Each
+program returns the error $f(x)-f(o)$. Its resolution differs between functions: for Griewank
+($1-\prod\cos$) and Rastrigin ($10-10\cos$) the cancellation makes any error below about
+$10^{-16}$ equal to 0, whereas for Sphere an error of 0 means $x=o$ exactly in double precision.
+The functions are shifted but not rotated; Sphere and Rastrigin are separable and Griewank
+becomes nearly separable as $D$ grows.
 
-\subsection{Results}
-\paragraph{Correctness of version 1} The same seed gives the same result. Five
-identical runs differ by at most 0.14\,\% in time. Against the sequential program
-($N=50$, 10 runs), no significant difference was detected: both solve Sphere and
-Rastrigin exactly for $D=10$; Rosenbrock $D=10$ gives $2.03\pm1.62$ (sequential) and
-$0.72\pm1.05$ (GPU), $p=0.089$; Rastrigin $D=50$ gives $151.4\pm6.6$ and $145.6\pm6.6$,
-$p=0.140$. The Rosenbrock case (a factor 3 in mean) is close to the threshold: with 10 runs the test has little power, so this validation shows no detected difference, not equivalence.
+\subsection{Running time}\label{sec:time}
+\paragraph{Campaign} Table~\ref{tab:camp} and Fig.~\ref{fig:camp}. Version~2 is the fastest
+program in all 36 configurations. Its speedup over the sequential DE grows with $D$ and $N$,
+from $1.9\times$ ($D=10$, $N=50$) to $58\times$ ($D=100$, $N=500$) on times pooled over the four
+functions, and from $1.5\times$ to $74\times$ for single functions. Version~1 is slower than the
+sequential DE with $N=50$ and $D=10$ ($0.81\times$), stays below $2.3\times$ with $N\le100$, and
+reaches $6\times$ to $9.5\times$ with $N=500$, when it launches four blocks. Version~2 is thus up
+to about $15\times$ faster than version~1 ($D=100$, $N=100$). Since version~1 was not tuned
+(blocks of 32 threads would use four SMs instead of one for $N=100$), this ratio measures the
+benefit of the gene-level mapping over this baseline, not over the best one-thread-per-individual
+code. jDE costs 10 to 33\,\% more time than version~2, depending on the configuration.
 
-\paragraph{Speedup of version 1} Table~\ref{tab:sp1} and Fig.~\ref{fig:sp1}. With
-$N=100$ and 128 threads per block, version~1 launches a single block, i.e.\ it uses one
-SM out of 40, and each thread loops over $D$ genes with strided accesses; the speedup
-stays between $0.98\times$ and $2.3\times$.
+These speedups are obtained at equal budget, not at equal quality: where the GPU versions are
+less accurate (Section~\ref{sec:quality}), the sequential DE gets more from the same budget.
+With $D=10$ the sequential DE runs in 0.03~s, less than the creation of a CUDA context, so the
+small speedups of this dimension only matter when the GPU is already initialized.
 
-\begin{table}[t]
+\begin{table}[!t]
 \centering
-\caption{Version 1 against the sequential DE ($N=100$, mean time of 5 runs, seconds).}
-\label{tab:sp1}
-\begin{tabular}{lrrrr}
+\caption{Mean sequential time and speedups of the GPU programs over the sequential DE:
+ratio of the mean times pooled over the four functions, with the range over the functions in
+brackets (10 runs per function).}
+\label{tab:camp}
+\footnotesize\setlength{\tabcolsep}{3pt}
+\begin{tabular}{rrrlll}
 \toprule
-Function & $D$ & Sequential & GPU v1 & Speedup\\
+$D$ & $N$ & seq. (s) & v1 & v2 & jDE\\
 \midrule
-Sphere     & 10  & 0.0213 & 0.0169 & 1.26\\
-           & 50  & 0.4500 & 0.2769 & 1.63\\
-           & 100 & 1.7608 & 0.8912 & 1.98\\
-Rosenbrock & 10  & 0.0218 & 0.0180 & 1.21\\
-           & 50  & 0.4664 & 0.3269 & 1.43\\
-           & 100 & 2.0467 & 1.1786 & 1.74\\
-Griewank   & 10  & 0.0389 & 0.0360 & 1.08\\
-           & 50  & 0.7468 & 0.7618 & 0.98\\
-           & 100 & 3.2384 & 2.9149 & 1.11\\
-Rastrigin  & 10  & 0.0354 & 0.0261 & 1.36\\
-           & 50  & 1.1170 & 0.4930 & 2.27\\
-           & 100 & 4.1260 & 1.8526 & 2.23\\
+10 & 50 & 0.033 & 0.81 (0.73--0.90) & 1.9 (1.5--2.2) & 1.6 (1.3--1.8)\\
+10 & 100 & 0.034 & 1.4 (1.3--1.5) & 3.8 (2.8--5.0) & 3.1 (2.2--4.0)\\
+10 & 500 & 0.039 & 7.9 (6.7--8.3) & 13 (9.2--16) & 11 (7.6--14)\\
+50 & 50 & 0.73 & 1.0 (0.73--1.4) & 8.1 (6.2--11) & 6.5 (5.0--9.3)\\
+50 & 100 & 0.73 & 1.6 (1.1--2.0) & 15 (11--21) & 11 (8.5--16)\\
+50 & 500 & 0.78 & 7.7 (6.0--9.5) & 40 (33--54) & 35 (28--48)\\
+100 & 50 & 2.8 & 1.0 (0.73--1.5) & 13 (10--19) & 11 (8.1--16)\\
+100 & 100 & 2.9 & 1.6 (1.1--2.3) & 24 (19--35) & 18 (15--26)\\
+100 & 500 & 3.2 & 7.2 (6.3--9.1) & 58 (50--74) & 51 (43--68)\\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\begin{figure}[t]
+\begin{figure*}[!t]
 \centering
-\includegraphics[width=\columnwidth]{speedup_v1.png}
-\caption{Speedup of version 1 over the sequential DE ($N=100$).}
-\label{fig:sp1}
-\end{figure}
+\includegraphics[width=0.85\textwidth]{speedup_campaign_en.pdf}
+\caption{Speedup over the sequential DE as a function of $N$ (ratio of the mean times pooled
+over the four functions, log scales).}
+\label{fig:camp}
+\end{figure*}
 
-\paragraph{Block size and occupancy} For $D=50$ and $D=100$, blocks of 64 to 512
-threads all reach 100\,\% theoretical occupancy, yet 128 and 256 threads are always
-slower than the best of 32 and 64 (Table~\ref{tab:bloc}): with $D=50$ and $T=256$,
-80\,\% of the threads have no gene, and every extra thread lengthens the reduction
-and the synchronizations. Small blocks win when the grid already fills the GPU
-($N=500$), 64 threads when it does not ($N\le100$). The automatic rule reproduces the
-best choice in the 12 measured cases (Rastrigin and Sphere, $D\in\{50,100\}$,
-$N\in\{50,100,500\}$; Table~\ref{tab:bloc} shows Rastrigin), but it was fitted on these
-cases and on a single GPU; differences of a few percent between block sizes are within the
-run-to-run variation; the
-threshold $4\times\#\mathrm{SM}=160$ is only known to lie between $N=100$ and $500$,
-and the branch $D\le32$ was not swept.
+\paragraph{Block size} Table~\ref{tab:bloc} gives the time of version~2 for several block
+sizes. For $D=50$ and $100$, blocks of 64 to 512 threads all reach 100\,\% theoretical
+occupancy, yet 128 and 256 threads are always slower than the best of 32 and 64: with $D=50$
+and $T=256$, 80\,\% of the threads have no gene, and every extra thread lengthens the reduction
+and the synchronizations. The differences between 32 and 64 threads (6 to 25\,\%) are well
+above the run-to-run variation of the GPU. Blocks of 32 threads win with $N=500$ (12.5 blocks
+per SM, 39\,\% theoretical occupancy) and blocks of 64 with $N\le100$ (at most 2.5 blocks per
+SM); a plausible explanation, not verified with a profiler, is that larger blocks are needed to
+keep enough warps resident when the grid is small. The automatic rule reproduces the best
+choice in the 12 measured cases (Rastrigin and Sphere, $D\in\{50,100\}$, $N\in\{50,100,500\}$),
+but it was fitted on them, on one GPU; the threshold $4\times\#\mathrm{SM}=160$ is only known to
+lie between $N=100$ and $500$, and the branch $D\le32$ was not swept.
 
-\begin{table}[t]
+\begin{table}[!t]
 \centering
-\caption{Version 2, Rastrigin: mean time (s, 3 runs) for $T$ threads per block.}
+\caption{Version 2, Rastrigin: mean time (s, 3 runs) for $T$ threads per block; ``auto'' is
+the automatic rule.}
 \label{tab:bloc}
+\footnotesize
 \begin{tabular}{rrrrrrr}
 \toprule
 $D$ & $N$ & 32 & 64 & 128 & 256 & auto\\
 \midrule
-50  & 50  & 0.1039 & \textbf{0.0913} & 0.1003 & 0.1262 & 0.0912\\
-50  & 100 & 0.0535 & \textbf{0.0504} & 0.0587 & 0.0778 & 0.0505\\
-50  & 500 & \textbf{0.0205} & 0.0222 & 0.0383 & 0.0818 & 0.0202\\
-100 & 50  & 0.2741 & \textbf{0.2194} & 0.2240 & 0.2708 & 0.2198\\
-100 & 100 & 0.1421 & \textbf{0.1246} & 0.1376 & 0.1716 & 0.1253\\
-100 & 500 & \textbf{0.0599} & 0.0642 & 0.1026 & 0.1704 & 0.0599\\
+50  & 50  & 0.104 & \textbf{0.091} & 0.100 & 0.126 & 0.091\\
+50  & 100 & 0.054 & \textbf{0.050} & 0.059 & 0.078 & 0.051\\
+50  & 500 & \textbf{0.021} & 0.022 & 0.038 & 0.082 & 0.020\\
+100 & 50  & 0.274 & \textbf{0.219} & 0.224 & 0.271 & 0.220\\
+100 & 100 & 0.142 & \textbf{0.125} & 0.138 & 0.172 & 0.125\\
+100 & 500 & \textbf{0.060} & 0.064 & 0.103 & 0.170 & 0.060\\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\paragraph{Version 2 against version 1} Table~\ref{tab:v1v2} and Fig.~\ref{fig:v1v2}.
-The gain grows with $D$ ($6.5\times$ to $14.6\times$ for $D=100$). Version~1 was not
-tuned (one SM used), so this gain measures the benefit of the gene-level
-decomposition rather than an upper bound. No significant difference in quality was
-detected between the two versions (Mann--Whitney, 10 runs): Rosenbrock $D=10$
-($p=0.623$), Rosenbrock $D=50$ ($p=0.345$), Rastrigin $D=50$ ($p=0.104$). Compared with the
-sequential times of Table~\ref{tab:sp1} (Rastrigin, $N=100$), version~2 is about
-$4\times$, $22\times$ and $33\times$ faster for $D=10$, $50$ and $100$ (the full campaign,
-measured later in another session, gives $35\times$ for $D=100$); these are orders of
-magnitude, the sequential times varying by 10 to 17\,\% between runs on Colab, which is why
-Tables I and V differ slightly for the same configuration.
+\subsection{Solution quality}\label{sec:quality}
+\paragraph{GPU versions against the sequential DE} Tables~\ref{tab:err50} to \ref{tab:err500}
+give the final errors. Against the sequential DE, version~1 is better in 0, not different in
+31 and worse in 5 configurations; version~2 in 0, 32 and 4. All these differences occur with
+$N=500$: Sphere for the three dimensions and Griewank for $D=50$ and $100$ (version~2 is not
+significantly worse on Griewank with $D=100$ after correction). Kruskal--Wallis separates the
+three implementations of DE/rand/1/bin in exactly these 5 configurations. With $N=500$ the
+budget allows only 200 to 2000 generations and DE/rand/1/bin has not converged
+($0.07$ on Sphere with $D=100$); the sequential error is then 1.3 to 4 times lower. With
+$N\le100$ no difference is detected.
 
-\begin{table}[t]
+\paragraph{Generational control} The sequential DE replaces an individual as soon as its trial
+wins, which propagates improvements within a generation; the GPU versions cannot. To test whether
+this explains the differences, we ran the sequential program in generational mode (trials read
+the previous population, winners go to a second one) on the 36 configurations with the same
+seeds, 360 runs. Table~\ref{tab:gen} summarizes the tests. After correction, the generational
+sequential DE differs from the asynchronous one in 6 configurations, the 5 above and Sphere with
+$D=100$, $N=100$ (an error of $10^{-28}$ against 0, without practical meaning), and it is not
+distinguishable from version~1 or version~2 in any configuration. The accuracy losses of the
+GPU versions are therefore explained by the generational replacement, not by the GPU
+implementation. Its times were measured on another machine and are not comparable with the
+campaign.
+
+\begin{table}[!t]
 \centering
-\caption{Mean time (s, 3 runs) of versions 1 and 2, Rastrigin.}
-\label{tab:v1v2}
-\begin{tabular}{rrrrr}
+\caption{Generational control: number of configurations (out of 36) where the generational
+sequential DE differs from each program (Mann--Whitney).}
+\label{tab:gen}
+\footnotesize
+\begin{tabular}{lcc}
 \toprule
-$D$ & $N$ & v1 & v2 & v1/v2\\
+Generational DE against & raw $p<0.05$ & Holm (36 tests)\\
 \midrule
-10  & 50  & 0.0433 & 0.0171 & 2.53\\
-10  & 100 & 0.0259 & 0.0088 & 2.95\\
-10  & 500 & 0.0054 & 0.0031 & 1.72\\
-50  & 50  & 0.7573 & 0.0910 & 8.32\\
-50  & 100 & 0.4796 & 0.0504 & 9.51\\
-50  & 500 & 0.1014 & 0.0201 & 5.05\\
-100 & 50  & 2.7749 & 0.2194 & 12.65\\
-100 & 100 & 1.8271 & 0.1249 & 14.63\\
-100 & 500 & 0.3864 & 0.0597 & 6.47\\
+asynchronous sequential DE & 9 & 6\\
+GPU version 1 & 1 & 0\\
+GPU version 2 & 1 & 0\\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\begin{figure*}[t]
-\centering
-\includegraphics[width=0.85\textwidth]{time_v1_v2_en.pdf}
-\caption{Mean time of versions 1 and 2 as a function of $N$ (Rastrigin, 3 runs, log scales).}
-\label{fig:v1v2}
-\end{figure*}
+\paragraph{jDE} jDE is better than the sequential DE in 17 configurations, not different in 18
+and worse in one (Sphere, $D=100$, $N=50$: $7\times10^{-28}$ against 0). It also fails once
+without significance: on Griewank with $D=100$, $N=50$, some runs do not reach the optimum
+(mean 0.044 against 0). With $N\le100$ its gain comes mostly from Rastrigin, which it solves
+for $D=50$ and $100$ where DE/rand/1/bin stays near 165 and 535: on a separable function a
+small $CR$ is favourable (Table~\ref{tab:var}), and jDE adapts $CR$ towards such values. With
+$N=500$ it is better in all 12 configurations, including the non-separable Rosenbrock
+($104$ against $2.2\times10^4$ for $D=100$): there the budget allows few generations, and the
+adapted $F_i$ and $CR_i$ converge much faster than the fixed $F=0.5$, $CR=0.3$. Counting as a
+success a final error below $10^{-8}$, as Qin \emph{et al.}, the sequential DE and both GPU
+versions succeed in 140 of their 360 runs and jDE in 223. These gains are algorithmic: they
+are not a property of the GPU, and a sequential jDE should show them as well.
 
-\paragraph{DE variants} Table~\ref{tab:var} compares six configurations on the GPU
-($D=50$, $N=100$, 10 runs, same organization as version~2): rand/1 with
-$CR\in\{0.1,0.3,0.5,0.9\}$, current-to-best/1 (ctb1, $CR=0.3$) and jDE. With rand/1,
-$F=0.5$, $CR=0.3$ the variant program reproduces version~2 bit for bit. Kruskal--Wallis
-detects a difference on Sphere, Rosenbrock and Rastrigin ($p<10^{-6}$); all variants
-solve Griewank. jDE has the best mean rank and solves Rastrigin in every run.
-Rastrigin is separable, which favours a small $CR$ ($CR=0.1$ reaches $10^{-11}$); on the
-non-separable Rosenbrock the order is reversed ($CR=0.9$ is best). ctb1 converges
-prematurely (median 341 on Rosenbrock) and costs about 40\,\% more time per run.
+\paragraph{DE variants} Table~\ref{tab:var} compares six variants of the GPU program for
+$D=50$, $N=100$ (10 runs): rand/1 with $CR\in\{0.1,0.3,0.5,0.9\}$, current-to-best/1 (ctb1)
+and jDE. With $CR=0.3$ the variant program reproduces version~2 bit for bit. Kruskal--Wallis
+detects a difference on Sphere, Rosenbrock and Rastrigin ($p<10^{-6}$); all variants solve
+Griewank. On Rastrigin a small $CR$ is best ($CR=0.1$ reaches $10^{-11}$), on the
+non-separable Rosenbrock a large one ($CR=0.9$). ctb1 converges prematurely (mean 1726,
+median 341 on Rosenbrock) and costs about 40\,\% more time.
 
-\begin{table}[t]
+\begin{table}[!t]
 \centering
 \caption{DE variants on the GPU, $D=50$, $N=100$: mean final error over 10 runs and mean
 Kruskal--Wallis rank over the four functions (lower is better).}
 \label{tab:var}
+\footnotesize\setlength{\tabcolsep}{3pt}
 \begin{tabular}{lrrrr}
 \toprule
 Variant & Sphere & Rosenbrock & Rastrigin & rank\\
@@ -393,88 +405,44 @@ ctb1, CR=0.3   & $2.4\times10^{-28}$ & 1726 & 133.8               & 41.0\\
 \end{tabular}
 \end{table}
 
-\paragraph{Full campaign} The sequential DE, versions 1 and 2 and jDE were run on the
-36 configurations (4 functions, $D\in\{10,50,100\}$, $N\in\{50,100,500\}$, 10 seeds), 1440
-runs in total (CUDA 13, sequential code compiled with \texttt{g++ -O2}); all passed the
-built-in checks. The complete tables (mean $\pm$ sample standard deviation per
-configuration) are in the repository (\texttt{results/analyse}).
+\subsection{Comparison with cudaDEi}
+Qin \emph{et al.}~\cite{qin2012} use the same algorithm, parameters, functions and budget, with
+$N$ up to 1000, 25 runs and a GTX~560. Their times are not comparable with ours: the GPUs are
+seven years apart, their sequential DE runs on another CPU, and the precision and timed region
+are not reported. Their errors are, and Table~\ref{tab:qin} shows two gaps. On
+Sphere with $N=500$ they report a success rate of 1 for the three dimensions, whereas our DE has
+not converged. On Rastrigin with $D=50$, $N=100$ they report 2.94 against 165. An independent
+NumPy implementation of DE/rand/1/bin, written from the equations of Section~\ref{sec:de},
+reproduces our values in both cases (for Rastrigin, whatever the bound handling), and still does not reach the
+published Sphere errors if the domain is reduced to $[-5.12,5.12]^D$. The published results are
+therefore not reproducible from the paper's description; we could not identify the difference.
 
-\emph{Time.} Table~\ref{tab:camp} and Fig.~\ref{fig:camp}. Version~2 is the fastest
-program in all 36 configurations; its speedup over the sequential code grows with $D$
-and $N$, from $1.5\times$ (Rosenbrock, $D=10$, $N=50$) to $74.5\times$ (Rastrigin, $D=100$,
-$N=500$). Version~1 only pays off with $N=500$ ($6.0\times$ to $9.5\times$); with $N=50$ it
-ranges from $0.7\times$ to $1.5\times$. jDE costs 10 to 33\,\% more time than version~2, depending on the configuration (13 to
-32\,\% on the pooled times of Table~\ref{tab:camp}). These speedups are at equal budget of
-evaluations, not at equal quality: where versions 1 and 2 are less accurate (see below), the
-sequential DE gets more from the same budget.
-
-\begin{table}[t]
+\begin{table}[!t]
 \centering
-\caption{Full campaign: mean time of the sequential DE (s) over the four functions
-(10 runs each) and speedups, computed as ratios of these pooled mean times.}
-\label{tab:camp}
-\begin{tabular}{rrrrrr}
+\caption{Mean final error: our version~2, an independent NumPy DE/rand/1/bin (5 seeds for
+Sphere, 3 for Rastrigin) and cudaDEi as published~\cite{qin2012}.}
+\label{tab:qin}
+\footnotesize\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lrrrrr}
 \toprule
-$D$ & $N$ & seq. (s) & v1 & v2 & jDE\\
+Function & $D$ & $N$ & GPU v2 & NumPy & cudaDEi\\
 \midrule
-10  & 50  & 0.033 & 0.8 & 1.9  & 1.6\\
-10  & 100 & 0.034 & 1.4 & 3.8  & 3.1\\
-10  & 500 & 0.039 & 7.9 & 12.7 & 10.8\\
-50  & 50  & 0.729 & 1.0 & 8.1  & 6.5\\
-50  & 100 & 0.732 & 1.6 & 14.7 & 11.1\\
-50  & 500 & 0.781 & 7.7 & 40.4 & 35.2\\
-100 & 50  & 2.845 & 1.0 & 13.2 & 10.9\\
-100 & 100 & 2.943 & 1.6 & 24.2 & 18.3\\
-100 & 500 & 3.191 & 7.2 & 57.5 & 50.8\\
+Sphere    & 10  & 500 & $9.6{\times}10^{-6}$ & $8.1{\times}10^{-6}$ & $<10^{-8}$\\
+Sphere    & 50  & 500 & $2.4{\times}10^{-4}$ & $2.6{\times}10^{-4}$ & $<10^{-8}$\\
+Sphere    & 100 & 500 & $0.098$              & $0.097$              & $<10^{-8}$\\
+Rastrigin & 50  & 100 & $165$                & 147--174             & $2.94$\\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\begin{figure*}[t]
+% ---------------------------------------------------------------------
+\begin{table*}[p]
 \centering
-\includegraphics[width=0.85\textwidth]{speedup_campaign_en.pdf}
-\caption{Speedup over the sequential DE as a function of $N$ (full campaign, ratio of
-mean times pooled over the four functions, log scales).}
-\label{fig:camp}
-\end{figure*}
-
-\emph{Quality.} Tables~\ref{tab:err50}, \ref{tab:err} and \ref{tab:err500} give the mean and
-standard deviation of the final error for $N=50$, $100$ and $500$. With $N=500$ the budget
-allows only 200 to 2000 generations and DE/rand/1/bin has not converged on most
-functions (e.g.\ $0.07$ on Sphere with $D=100$), whereas jDE is better than the sequential DE
-in all 12 configurations.
-Each algorithm was compared with the sequential DE (Mann--Whitney, Holm
-correction within each configuration, $\alpha=0.05$). Version~1: 0 better, 29 not
-different, 7 worse; version~2: 1, 27, 8; jDE: 19, 15, 2 (with Holm's correction over all
-108 tests: 0/31/5, 0/32/4 and 17/18/1). Among the three implementations of DE/rand/1/bin,
-Kruskal--Wallis detects a difference in 9 configurations out of 36, six of them with
-$N=500$ (Sphere for the three dimensions, Griewank for $D=50$ and $100$, Rosenbrock for
-$D=50$), where the sequential DE
-reaches an error 1.1 to 4 times lower (e.g.\ $1.1\times10^{-4}$ against $2.3\times10^{-4}$ for
-Sphere, $D=50$). With $N=500$ the budget allows five times fewer generations than with
-$N=100$ (200 to 2000) and the runs have not converged; our explanation was that the
-asynchronous replacement of the sequential code propagates improvements within a
-generation, which the generational GPU versions cannot do. To test it, we ran the sequential
-program in a generational mode (\texttt{--generationnel}: trials read the previous
-population and winners are written to a second one, as on the GPU) on the 36
-configurations with the same 10 seeds, 360 runs. The generational sequential DE differs from
-the asynchronous one (Mann--Whitney, raw $p<0.05$) in exactly the 9 configurations where
-Kruskal--Wallis separates the three implementations, and it is not distinguishable from
-version~1 or from version~2 in 35 of the 36 configurations. The loss of accuracy therefore
-comes from the replacement scheme, not from the GPU implementation. With $N\le100$, no difference is detected in 21 of 24 configurations.
-jDE solves Rastrigin for $D=50$ and $D=100$ with $N=100$ (error 0), where DE/rand/1/bin
-stays near 165 and 535. Counting as a success a final error below $10^{-8}$, as Qin
-\emph{et al.}, the sequential DE and versions 1 and 2 succeed in 39\,\% of the 360 runs
-each and jDE in 62\,\%. This gain is expected on our benchmark: the functions are unrotated and
-two of them are separable, which favours a small $CR$ (Table~\ref{tab:var}: $CR=0.1$
-reaches $10^{-11}$ on Rastrigin), and jDE adapts $CR$ towards such values; on the
-non-separable Rosenbrock with $D=100$, $N=100$, jDE is worse than the sequential DE in mean
-($112$ against $89.6$). The gain of jDE is algorithmic, not a property of the GPU.
-
-\begin{table*}[t]
-\centering
-\caption{Final error for $N=50$: mean $\pm$ sample standard deviation over 10 runs, with the
-same markers as Table~\ref{tab:err}.}
+\caption{Final error for $N=50$: mean $\pm$ sample standard deviation over 10 runs. A superscript
+marks a result significantly better ($+$) or worse ($-$) than the sequential DE (Mann--Whitney,
+Holm's correction over the 108 tests of the campaign). For Griewank and Rastrigin, 0 means an
+error below about $10^{-16}$; for Sphere, $x=o$ exactly. On Rosenbrock with $D=100$, one
+sequential run ends at 137, the nine others between 81 and 87.}
 \label{tab:err50}
 \small\setlength{\tabcolsep}{4pt}
 \begin{tabular}{lrcccc}
@@ -485,36 +453,30 @@ Sphere & 10 & $0\pm0$ & $0\pm0$ & $0\pm0$ & $0\pm0$\\
  & 50 & $0\pm0$ & $0\pm0$ & $0\pm0$ & $5.0{\times}10^{-30}\pm1.6{\times}10^{-29}$\\
  & 100 & $0\pm0$ & $0\pm0$ & $0\pm0$ & $6.8{\times}10^{-28}\pm7.2{\times}10^{-28}$\textsuperscript{$-$}\\
 \midrule
-Rosenbrock & 10 & $2.03\pm1.71$ & $0.721\pm1.11$ & $0.463\pm0.537$ & $0.399\pm1.26$\textsuperscript{$+$}\\
- & 50 & $37.9\pm1.58$ & $39.2\pm1.33$\textsuperscript{$-$} & $39.5\pm1.36$\textsuperscript{$-$} & $1.46\pm2.41$\textsuperscript{$+$}\\
+Rosenbrock & 10 & $2.03\pm1.71$ & $0.721\pm1.11$ & $0.463\pm0.537$ & $0.399\pm1.26$\\
+ & 50 & $37.9\pm1.58$ & $39.2\pm1.33$ & $39.5\pm1.36$ & $1.46\pm2.41$\textsuperscript{$+$}\\
  & 100 & $89.6\pm16.9$ & $84.6\pm2.28$ & $85.1\pm2.95$ & $79.4\pm64.3$\\
 \midrule
 Griewank & 10 & $0\pm0$ & $0\pm0$ & $0\pm0$ & $0\pm0$\\
  & 50 & $0\pm0$ & $0\pm0$ & $0\pm0$ & $0\pm0$\\
- & 100 & $0\pm0$ & $0\pm0$ & $0\pm0$ & $0.0440\pm0.0555$\textsuperscript{$-$}\\
+ & 100 & $0\pm0$ & $0\pm0$ & $0\pm0$ & $0.0440\pm0.0555$\\
 \midrule
 Rastrigin & 10 & $0\pm0$ & $0\pm0$ & $0\pm0$ & $0.0995\pm0.315$\\
- & 50 & $151\pm6.91$ & $146\pm6.92$ & $139\pm7.82$\textsuperscript{$+$} & $0\pm0$\textsuperscript{$+$}\\
+ & 50 & $151\pm6.91$ & $146\pm6.92$ & $139\pm7.82$ & $0\pm0$\textsuperscript{$+$}\\
  & 100 & $493\pm10.2$ & $495\pm18.4$ & $495\pm11.4$ & $0.497\pm0.846$\textsuperscript{$+$}\\
 \bottomrule
 \end{tabular}
-\end{table*}
 
-\begin{table*}[t]
-\centering
-\caption{Final error for $N=100$: mean $\pm$ sample standard deviation over 10 runs.
-A superscript marks a result significantly better ($+$) or worse ($-$) than the sequential
-DE (Mann--Whitney, Holm correction within the configuration, $\alpha=0.05$); 0 is an error
-below the double-precision resolution (see the benchmark functions above). Tables~\ref{tab:err50} and \ref{tab:err500} give $N=50$ and $N=500$.}
+\vspace{1.5em}
+\caption{Final error for $N=100$ (same conventions as Table~\ref{tab:err50}).}
 \label{tab:err}
-\small\setlength{\tabcolsep}{4pt}
 \begin{tabular}{lrcccc}
 \toprule
 Function & $D$ & Sequential DE & GPU v1 & GPU v2 & GPU jDE\\
 \midrule
 Sphere & 10 & $0\pm0$ & $0\pm0$ & $0\pm0$ & $0\pm0$\\
  & 50 & $0\pm0$ & $0\pm0$ & $0\pm0$ & $0\pm0$\\
- & 100 & $0\pm0$ & $1.9{\times}10^{-30}\pm4.4{\times}10^{-30}$ & $5.6{\times}10^{-29}\pm1.0{\times}10^{-28}$\textsuperscript{$-$} & $2.1{\times}10^{-29}\pm6.4{\times}10^{-29}$\\
+ & 100 & $0\pm0$ & $1.9{\times}10^{-30}\pm4.4{\times}10^{-30}$ & $5.6{\times}10^{-29}\pm1.0{\times}10^{-28}$ & $2.1{\times}10^{-29}\pm6.4{\times}10^{-29}$\\
 \midrule
 Rosenbrock & 10 & $3.04\pm1.87$ & $3.31\pm1.89$ & $3.09\pm2.28$ & $0.0503\pm0.118$\textsuperscript{$+$}\\
  & 50 & $41.0\pm0.353$ & $42.8\pm5.35$ & $41.1\pm0.493$ & $32.9\pm21.6$\\
@@ -529,30 +491,25 @@ Rastrigin & 10 & $0\pm0$ & $0\pm0$ & $0\pm0$ & $0\pm0$\\
  & 100 & $542\pm10.9$ & $532\pm14.5$ & $533\pm14.4$ & $0\pm0$\textsuperscript{$+$}\\
 \bottomrule
 \end{tabular}
-\end{table*}
 
-
-\begin{table*}[t]
-\centering
-\caption{Final error for $N=500$: mean $\pm$ sample standard deviation over 10 runs, with the
-same markers as Table~\ref{tab:err}.}
+\vspace{1.5em}
+\caption{Final error for $N=500$ (same conventions as Table~\ref{tab:err50}).}
 \label{tab:err500}
-\small\setlength{\tabcolsep}{4pt}
 \begin{tabular}{lrcccc}
 \toprule
 Function & $D$ & Sequential DE & GPU v1 & GPU v2 & GPU jDE\\
 \midrule
-Sphere & 10 & $2.4{\times}10^{-6}\pm3.1{\times}10^{-7}$ & $7.8{\times}10^{-6}\pm2.9{\times}10^{-6}$\textsuperscript{$-$} & $9.6{\times}10^{-6}\pm3.1{\times}10^{-6}$\textsuperscript{$-$} & $1.6{\times}10^{-6}\pm7.3{\times}10^{-7}$\textsuperscript{$+$}\\
+Sphere & 10 & $2.4{\times}10^{-6}\pm3.1{\times}10^{-7}$ & $7.8{\times}10^{-6}\pm2.9{\times}10^{-6}$\textsuperscript{$-$} & $9.6{\times}10^{-6}\pm3.1{\times}10^{-6}$\textsuperscript{$-$} & $1.6{\times}10^{-6}\pm7.3{\times}10^{-7}$\\
  & 50 & $1.1{\times}10^{-4}\pm1.1{\times}10^{-5}$ & $2.3{\times}10^{-4}\pm2.8{\times}10^{-5}$\textsuperscript{$-$} & $2.4{\times}10^{-4}\pm2.8{\times}10^{-5}$\textsuperscript{$-$} & $7.3{\times}10^{-11}\pm1.8{\times}10^{-11}$\textsuperscript{$+$}\\
  & 100 & $0.0733\pm5.5{\times}10^{-3}$ & $0.0979\pm0.0117$\textsuperscript{$-$} & $0.0982\pm6.5{\times}10^{-3}$\textsuperscript{$-$} & $4.3{\times}10^{-15}\pm1.3{\times}10^{-15}$\textsuperscript{$+$}\\
 \midrule
 Rosenbrock & 10 & $53.3\pm15.9$ & $48.0\pm15.6$ & $47.5\pm16.1$ & $19.7\pm8.52$\textsuperscript{$+$}\\
- & 50 & $358\pm53.2$ & $434\pm55.3$\textsuperscript{$-$} & $400\pm33.6$\textsuperscript{$-$} & $45.2\pm1.01$\textsuperscript{$+$}\\
+ & 50 & $358\pm53.2$ & $434\pm55.3$ & $400\pm33.6$ & $45.2\pm1.01$\textsuperscript{$+$}\\
  & 100 & $2.2{\times}10^{4}\pm3.4{\times}10^{3}$ & $2.3{\times}10^{4}\pm3.4{\times}10^{3}$ & $2.5{\times}10^{4}\pm3.3{\times}10^{3}$ & $104\pm24.5$\textsuperscript{$+$}\\
 \midrule
 Griewank & 10 & $0.143\pm0.0245$ & $0.147\pm0.0304$ & $0.145\pm0.0335$ & $0.0755\pm0.0208$\textsuperscript{$+$}\\
  & 50 & $2.1{\times}10^{-4}\pm3.0{\times}10^{-5}$ & $4.1{\times}10^{-4}\pm5.9{\times}10^{-5}$\textsuperscript{$-$} & $4.3{\times}10^{-4}\pm4.3{\times}10^{-5}$\textsuperscript{$-$} & $9.9{\times}10^{-11}\pm2.0{\times}10^{-11}$\textsuperscript{$+$}\\
- & 100 & $0.0439\pm3.3{\times}10^{-3}$ & $0.0557\pm5.0{\times}10^{-3}$\textsuperscript{$-$} & $0.0571\pm5.4{\times}10^{-3}$\textsuperscript{$-$} & $1.9{\times}10^{-15}\pm9.2{\times}10^{-16}$\textsuperscript{$+$}\\
+ & 100 & $0.0439\pm3.3{\times}10^{-3}$ & $0.0557\pm5.0{\times}10^{-3}$\textsuperscript{$-$} & $0.0571\pm5.4{\times}10^{-3}$ & $1.9{\times}10^{-15}\pm9.2{\times}10^{-16}$\textsuperscript{$+$}\\
 \midrule
 Rastrigin & 10 & $4.48\pm0.915$ & $4.66\pm0.789$ & $4.92\pm1.18$ & $2.19\pm0.564$\textsuperscript{$+$}\\
  & 50 & $224\pm6.49$ & $229\pm7.92$ & $222\pm7.61$ & $17.9\pm2.67$\textsuperscript{$+$}\\
@@ -561,58 +518,42 @@ Rastrigin & 10 & $4.48\pm0.915$ & $4.66\pm0.789$ & $4.92\pm1.18$ & $2.19\pm0.564
 \end{tabular}
 \end{table*}
 
-\emph{Comparison with cudaDEi.} Qin \emph{et al.}~\cite{qin2012} use the same protocol
-(DE/rand/1/bin, $F=0.5$, $CR=0.3$, $10^4D$ evaluations, same functions and sizes, 25 runs,
-GTX~560). Their reported times are 59 to 365 times ours; with GPUs seven years apart and
-unreported details (floating-point precision, timed region), this ratio does not measure
-the quality of either implementation. For $N\le100$ the errors are equal on Sphere, equal or lower for
-us on Griewank (0 against 0.001 to 0.005), and equal on Rastrigin for $D=10$, but cudaDEi reports much lower
-errors on Rastrigin for $D\ge50$ (2.94 against 165 for $D=50$, $N=100$), on Rosenbrock in
-most configurations, and with $N=500$.
-An independent NumPy implementation of DE/rand/1/bin gives 147 to 174 on Rastrigin
-($D=50$, $N=100$) whatever the bound handling, and 80 with ten times the budget, so our
-values are those expected from this algorithm; we could not identify the cause of the
-gap, which the paper's description does not allow us to reproduce.
-
+\FloatBarrier
 % =====================================================================
 \section{Conclusion}\label{sec:conc}
-Mapping one individual to one thread is enough to obtain a correct GPU DE, but not a
-fast one: with populations of 50 to 100 individuals, the GPU is almost idle. Mapping
-one individual to one block and one gene to one thread, fusing the four DE
-operators in a single kernel and keeping the population and the best-individual
-search on the device gives a further $1.7\times$ to $14.6\times$ on a Tesla T4, and
-$35\times$ over a sequential implementation (Rastrigin, $D=100$, $N=100$), up to $74.5\times$
-with $N=500$. No significant difference in quality is detected in 21 of the 24
-configurations with $N\le100$.
-Measured timings, not theoretical occupancy, determined the block size.
-Limitations: the speedups come from a single GPU and single-core sequential code
-compiled with \texttt{-O2}; quality was compared on 10 runs per configuration; the block-size rule was fitted on 12 cases; the
-sequential and GPU programs are two variants (asynchronous and generational) of
-DE/rand/1/bin, and the speedups are at equal budget, not at equal quality; no profiler
-was used, so the explanations based on occupancy and memory accesses are consistent
-with the timings but not measured directly; the benchmark contains no rotated or
-composite function. Among the variants, the self-adaptive jDE gave the best overall
-ranking at $D=50$, $N=100$; this single configuration does not establish a general
-ranking. Over the full campaign, version~2 is the fastest program in every
-configuration and jDE is the only variant that improves significantly on the sequential
-DE; the generational GPU versions lose some accuracy against the asynchronous
-sequential DE when the population is large and the number of generations small, and a
-generational sequential DE loses exactly the same accuracy, which locates the cause in
-the replacement scheme.
+Mapping one individual to one thread gives a correct GPU DE but not a fast one: with up to 500
+individuals, most of the 40 SMs of a T4 stay idle. Mapping one individual to one block and one
+gene to one thread, fusing the four DE operators and keeping the population and the search for
+the best individual on the device makes the GPU program faster than the sequential DE in every
+configuration, by $1.9\times$ to $58\times$ on pooled times. The GPU versions lose accuracy only
+with $N=500$, and a generational sequential DE loses the same accuracy, which locates the cause
+in the replacement scheme. The self-adaptive jDE runs at almost the same speed and is the most
+accurate program. Measured timings, not theoretical occupancy, determined the block size.
 
-Future work: overlapping kernels P and MCER on two streams as in cudaDEi; reading the
-shift vector through the read-only cache instead of constant memory; warp-level reductions
-(\texttt{\_\_shfl\_down\_sync}) and several individuals per block when $D$ is small; profiling
-with Nsight Compute; equivalence tests and effect sizes instead of non-significance alone;
-rotated and composite CEC functions and modern adaptive DE (SHADE, L-SHADE).
+\emph{Limitations.} The speedups come from one GPU, in double precision, against a single-core
+sequential code compiled with \texttt{-O2}, and are at equal budget, not at equal quality.
+Version~1 was not tuned. No profiler was used, so the explanations based on occupancy and memory
+accesses are consistent with the timings but not measured. Quality was compared on 10 runs per
+configuration, on shifted but unrotated functions. The block-size rule was fitted on 12 cases.
+The cudaDEi errors could not be reproduced.
 
-The code, the raw results of the 1440 runs and the generational control, and the analysis
-scripts are available at \url{https://github.com/amenacer/DE_CUDA}.
+\emph{Future work.} Overlapping kernels P and MCER on two streams; reading $o$ through the
+read-only cache; warp-level reductions (\texttt{\_\_shfl\_down\_sync}) and several individuals per
+block when $D$ is small; profiling with Nsight Compute; a sequential jDE and effect sizes;
+rotated and composite functions and modern adaptive DE (SHADE, L-SHADE).
 
-\begin{thebibliography}{10}
+The code, the raw results of the 1440 runs and of the control, and the analysis scripts are
+available at \url{https://github.com/amenacer/DE_CUDA}.
+
+\section*{Acknowledgment}
+This work was carried out in the Massively Parallel Computing course of the Master~2 IMDS at
+Universit\'e de Haute-Alsace, from a CUDA PSO code provided by the course.
+
+\begin{thebibliography}{13}
 \bibitem{storn1997} R.~Storn and K.~Price, ``Differential evolution -- a simple and efficient heuristic for global optimization over continuous spaces,'' \emph{J. Global Optim.}, vol.~11, no.~4, pp.~341--359, 1997.
-\bibitem{kennedy1995} J.~Kennedy and R.~Eberhart, ``Particle swarm optimization,'' in \emph{Proc. IEEE Int. Conf. Neural Networks}, vol.~4, Perth, Australia, 1995, pp.~1942--1948.
-\bibitem{qin2012} A.~K.~Qin, F.~Raimondo, F.~Forbes, and Y.~S.~Ong, ``An improved CUDA-based implementation of differential evolution on GPU,'' in \emph{Proc. Genetic and Evolutionary Computation Conf. (GECCO)}, 2012.
+\bibitem{veronese2010} L.~de~P.~Veronese and R.~A.~Krohling, ``Differential evolution algorithm on the GPU with C-CUDA,'' in \emph{Proc. IEEE Congr. Evol. Comput. (CEC)}, Barcelona, Spain, 2010.
+\bibitem{dominguez2011} S.~J.~Dom\'inguez Gonz\'alez and N.~G.~Barriga, ``Fully parallel differential evolution,'' in \emph{Competition on GPUs for Genetic and Evolutionary Computation, GECCO}, Dublin, Ireland, 2011.
+\bibitem{qin2012} A.~K.~Qin, F.~Raimondo, F.~Forbes, and Y.~S.~Ong, ``An improved CUDA-based implementation of differential evolution on GPU,'' in \emph{Proc. Genetic and Evolutionary Computation Conf. (GECCO)}, Philadelphia, USA, 2012.
 \bibitem{brest2006} J.~Brest, S.~Greiner, B.~Bo\v{s}kovi\'c, M.~Mernik, and V.~\v{Z}umer, ``Self-adapting control parameters in differential evolution: a comparative study on numerical benchmark problems,'' \emph{IEEE Trans. Evol. Comput.}, vol.~10, no.~6, pp.~646--657, 2006.
 \bibitem{salmon2011} J.~K.~Salmon, M.~A.~Moraes, R.~O.~Dror, and D.~E.~Shaw, ``Parallel random numbers: as easy as 1, 2, 3,'' in \emph{Proc. SC11}, 2011, Art.~16.
 \bibitem{suganthan2005} P.~N.~Suganthan \emph{et~al.}, ``Problem definitions and evaluation criteria for the CEC 2005 special session on real-parameter optimization,'' Nanyang Technological Univ., Singapore, and KanGAL Rep. 2005005, 2005.

@@ -7,7 +7,8 @@ sequentiel remplace un individu des que son essai gagne (asynchrone).
 Entrees : results/campagne.csv et results/sde_generationnel.csv (360 runs, memes graines)
 Sortie  : results/analyse/tables/controle_generationnel.csv + resume sur la sortie standard
 
-Mann-Whitney bilateral, p brutes, alpha = 0.05 ; deux echantillons identiques donnent p = 1.
+Mann-Whitney bilateral, alpha = 0.05, p brutes et correction de Holm sur les 36 tests de
+chaque comparaison ; deux echantillons identiques donnent p = 1.
 Lancer les runs : voir l'en-tete de src/seq/sde.cpp (option --generationnel).
 """
 from pathlib import Path
@@ -33,6 +34,16 @@ def p_kw(*ech):
     return kruskal(*ech).pvalue
 
 
+def holm(p, alpha=ALPHA):
+    p = np.asarray(p, dtype=float)
+    rejet = np.zeros(len(p), dtype=bool)
+    for k, i in enumerate(np.argsort(p)):
+        if p[i] > alpha / (len(p) - k):
+            break
+        rejet[i] = True
+    return rejet
+
+
 def main():
     camp = pd.read_csv(RACINE / "results" / "campagne.csv")
     gen = pd.read_csv(RACINE / "results" / "sde_generationnel.csv")
@@ -52,6 +63,8 @@ def main():
             "p_kw_sde_v1_v2": p_kw(e["sde"], e["cuda_v1"], e["cuda_v2"]),
         })
     r = pd.DataFrame(lignes)
+    for col in ["p_gen_vs_sde", "p_gen_vs_v1", "p_gen_vs_v2", "p_kw_sde_v1_v2"]:
+        r[col.replace("p_", "holm_")] = holm(r[col].values)
     sortie = RACINE / "results" / "analyse" / "tables" / "controle_generationnel.csv"
     r.to_csv(sortie, index=False)
 
@@ -62,6 +75,9 @@ def main():
     print(f"memes configurations               : {diff_gen == diff_kw}")
     print(f"sde_gen indiscernable de v1        : {(r['p_gen_vs_v1'] >= ALPHA).sum()} / 36")
     print(f"sde_gen indiscernable de v2        : {(r['p_gen_vs_v2'] >= ALPHA).sum()} / 36")
+    for col in ["holm_gen_vs_sde", "holm_gen_vs_v1", "holm_gen_vs_v2", "holm_kw_sde_v1_v2"]:
+        cfg = r[r[col]][["func", "D", "N"]].values.tolist()
+        print(f"Holm 36, {col} : {len(cfg)} -> {cfg}")
     print(f"tableau : {sortie.relative_to(RACINE)}")
 
 
