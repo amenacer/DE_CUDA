@@ -1,4 +1,4 @@
-// sde.cpp -- DE/rand/1/bin sequentiel (issues #7 et #8, 2.4-2.9)
+// sde.cpp -- DE/rand/1/bin sequentiel
 //
 // Reference de correction du projet : si le DE GPU (src/cuda) donne un
 // resultat different de celui-ci sur les memes (fonction, D, N, seed), c'est

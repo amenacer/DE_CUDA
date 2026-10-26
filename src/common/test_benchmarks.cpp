@@ -1,4 +1,4 @@
-// test_benchmarks.cpp -- valide l'interface commune (critere de l'issue #5)
+// test_benchmarks.cpp -- valide l'interface commune
 #include <cstdio>
 #include "benchmarks.h"
 #include "results_csv.h"

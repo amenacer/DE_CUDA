@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""comparaison_qin.py -- issue #21 : tests complémentaires et comparaison avec cudaDEi.
+"""comparaison_qin.py -- tests complémentaires et comparaison avec cudaDEi.
 
 1. Les trois implémentations du même DE/rand/1/bin (sde, cuda_v1, cuda_v2) donnent-elles
    la même qualité ? Kruskal-Wallis entre ces trois seules (jDE est un autre algorithme,

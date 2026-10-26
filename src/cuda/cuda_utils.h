@@ -1,4 +1,4 @@
-// cuda_utils.h -- outils communs aux versions GPU du DE (issue #9, tache 3.1)
+// cuda_utils.h -- outils communs aux versions GPU du DE
 //
 // CUDA_CHECK(appel)  : verifie le code de retour d'un appel CUDA (cudaMalloc,
 //                      cudaMemcpy...) et arrete le programme avec un message clair.

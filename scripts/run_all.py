@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Etape 5 (issue #14) : campagne experimentale complete.
+"""Campagne experimentale complete.
 
 4 fonctions x 3 dimensions x 3 populations x 10 graines, pour
     sde      (DE sequentiel, src/seq/sde.cpp)
@@ -103,7 +103,7 @@ def ecrire_setup(path, algos):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Campagne complete DE_CUDA (etape 5)")
+    ap = argparse.ArgumentParser(description="Campagne complete DE_CUDA")
     ap.add_argument("--out", default=str(ROOT / "results" / "campagne.csv"))
     ap.add_argument("--algos", nargs="+", choices=list(PROGRAMMES),
                     help="algos a lancer (defaut : sde cuda_v1 cuda_v2)")

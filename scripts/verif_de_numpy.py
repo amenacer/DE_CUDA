@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""verif_de_numpy.py -- issue #21 : contrôle indépendant de la qualité attendue du DE.
+"""verif_de_numpy.py -- contrôle indépendant de la qualité attendue du DE.
 
 Implémentation NumPy minimale, écrite indépendamment du code C++/CUDA, du DE/rand/1/bin
 générationnel (F = 0,5, CR = 0,3), sur Rastrigin décalée, D = 50, N = 100, domaine [-5, 5].

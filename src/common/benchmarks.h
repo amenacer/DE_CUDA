@@ -1,4 +1,4 @@
-// benchmarks.h -- INTERFACE COMMUNE du projet DE_CUDA (issue #5)
+// benchmarks.h -- INTERFACE COMMUNE du projet DE_CUDA
 // Utilise par la version sequentielle (src/seq) ET par la version GPU (src/cuda).
 // Ne pas modifier sans prevenir les deux autres membres du groupe.
 #pragma once

@@ -1,4 +1,4 @@
-// de_cuda_v1.cu -- DE/rand/1/bin sur GPU, version 1 "naive" (issues #9 et #10)
+// de_cuda_v1.cu -- DE/rand/1/bin sur GPU, version 1 "naive"
 //
 // DE/rand/1/bin comme le DE sequentiel (src/seq/sde.cpp), memes fonctions
 // (src/common/benchmarks.h), meme budget, meme format CSV. Difference : ici la
@@ -127,7 +127,7 @@ static bool health_check(const std::vector<double>& pop, const std::vector<doubl
 }
 
 // Lancement volontairement faux (2048 threads par bloc, maximum = 1024) :
-// CUDA_CHECK_KERNEL doit l'attraper et afficher un message clair (critere #9).
+// CUDA_CHECK_KERNEL doit l'attraper et afficher un message clair.
 static int test_erreur() {
     double* d = nullptr;
     CUDA_CHECK(cudaMalloc(&d, sizeof(double)));

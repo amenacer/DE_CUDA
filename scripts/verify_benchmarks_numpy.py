@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Issue #6 (2.3) : verifie les 4 fonctions de src/common/benchmarks.h contre
+"""Verifie les 4 fonctions de src/common/benchmarks.h contre
 une reimplementation NumPy independante.
 
 Compile et execute src/seq/test_vs_numpy.cpp, qui imprime 5 points aleatoires

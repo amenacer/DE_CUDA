@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""verif_sphere_n500_numpy.py -- controle independant sur Sphere, N = 500 (relecture, point 2a).
+"""verif_sphere_n500_numpy.py -- controle independant sur Sphere, N = 500.
 
 Qin et al. (GECCO 2012) publient un taux de succes de 1 (erreur < 1e-8) sur Sphere a N = 500
 pour D = 10, 50, 100. Ce script reecrit DE/rand/1/bin generationnel (F = 0,5, CR = 0,3,

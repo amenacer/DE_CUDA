@@ -1,6 +1,6 @@
 """Figures en anglais de l'article (Fig. 4 et Fig. 5).
 
-Entrees : results/temps_v1_v2.csv (etape 4, Rastrigin) et results/campagne.csv
+Entrees : results/temps_v1_v2.csv (Rastrigin) et results/campagne.csv
 Sorties : figures/time_v1_v2_en.pdf et figures/speedup_campaign_en.pdf
 
 Fig. 4 : temps moyen de v1 et v2 en fonction de N (Rastrigin, echelles log).

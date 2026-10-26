@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Issue #8 (2.7-2.9) : critere de validation -- 10 runs de src/seq/sde sur
+"""Critere de validation -- 10 runs de src/seq/sde sur
 Sphere, D=10, N=50, en verifiant best_error < 1e-8 a chaque run.
 
 Usage : python3 scripts/check_sde_sphere10.py
