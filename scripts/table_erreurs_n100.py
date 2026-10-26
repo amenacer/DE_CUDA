@@ -1,19 +1,20 @@
-"""Genere les lignes du tableau tab:err de l'article (erreur finale, N = 100).
+"""Genere les lignes des tableaux d'erreur finale de l'article (tab:err50, tab:err, tab:err500).
 
 Entrees : results/campagne.csv et results/analyse/tables/stats_pairwise.csv
 Sortie  : lignes LaTeX sur la sortie standard (moyenne +- ecart-type d'echantillon,
           exposant + / - si l'algorithme est significativement meilleur / pire que sde,
           Mann-Whitney avec correction de Holm dans la configuration).
 
-Usage : python scripts/table_erreurs_n100.py > /tmp/table_n100.tex
+Usage : python scripts/table_erreurs_n100.py [N]   (N = 50, 100 ou 500 ; 100 par defaut)
 """
 import math
+import sys
 from pathlib import Path
 
 import pandas as pd
 
 RACINE = Path(__file__).resolve().parent.parent
-N = 100
+N = int(sys.argv[1]) if len(sys.argv) > 1 else 100
 FONCTIONS = [("sphere", "Sphere"), ("rosenbrock", "Rosenbrock"),
              ("griewank", "Griewank"), ("rastrigin", "Rastrigin")]
 ALGOS = ["sde", "cuda_v1", "cuda_v2", "gpu_jde"]

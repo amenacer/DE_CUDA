@@ -438,8 +438,11 @@ mean times pooled over the four functions, log scales).}
 \label{fig:camp}
 \end{figure*}
 
-\emph{Quality.} Table~\ref{tab:err} gives the mean and standard deviation of the final
-error for $N=100$.
+\emph{Quality.} Tables~\ref{tab:err50}, \ref{tab:err} and \ref{tab:err500} give the mean and
+standard deviation of the final error for $N=50$, $100$ and $500$. With $N=500$ the budget
+allows only 200 to 2000 generations and DE/rand/1/bin has not converged on most
+functions (e.g.\ $0.07$ on Sphere with $D=100$), whereas jDE is better than the sequential DE
+in all 12 configurations.
 Each algorithm was compared with the sequential DE (Mann--Whitney, Holm
 correction within each configuration, $\alpha=0.05$). Version~1: 0 better, 29 not
 different, 7 worse; version~2: 1, 27, 8; jDE: 19, 15, 2 (with Holm's correction over all
@@ -470,11 +473,41 @@ non-separable Rosenbrock with $D=100$, $N=100$, jDE is worse than the sequential
 
 \begin{table*}[t]
 \centering
+\caption{Final error for $N=50$: mean $\pm$ sample standard deviation over 10 runs, with the
+same markers as Table~\ref{tab:err}.}
+\label{tab:err50}
+\small\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lrcccc}
+\toprule
+Function & $D$ & Sequential DE & GPU v1 & GPU v2 & GPU jDE\\
+\midrule
+Sphere & 10 & $0\pm0$ & $0\pm0$ & $0\pm0$ & $0\pm0$\\
+ & 50 & $0\pm0$ & $0\pm0$ & $0\pm0$ & $5.0{\times}10^{-30}\pm1.6{\times}10^{-29}$\\
+ & 100 & $0\pm0$ & $0\pm0$ & $0\pm0$ & $6.8{\times}10^{-28}\pm7.2{\times}10^{-28}$\textsuperscript{$-$}\\
+\midrule
+Rosenbrock & 10 & $2.03\pm1.71$ & $0.721\pm1.11$ & $0.463\pm0.537$ & $0.399\pm1.26$\textsuperscript{$+$}\\
+ & 50 & $37.9\pm1.58$ & $39.2\pm1.33$\textsuperscript{$-$} & $39.5\pm1.36$\textsuperscript{$-$} & $1.46\pm2.41$\textsuperscript{$+$}\\
+ & 100 & $89.6\pm16.9$ & $84.6\pm2.28$ & $85.1\pm2.95$ & $79.4\pm64.3$\\
+\midrule
+Griewank & 10 & $0\pm0$ & $0\pm0$ & $0\pm0$ & $0\pm0$\\
+ & 50 & $0\pm0$ & $0\pm0$ & $0\pm0$ & $0\pm0$\\
+ & 100 & $0\pm0$ & $0\pm0$ & $0\pm0$ & $0.0440\pm0.0555$\textsuperscript{$-$}\\
+\midrule
+Rastrigin & 10 & $0\pm0$ & $0\pm0$ & $0\pm0$ & $0.0995\pm0.315$\\
+ & 50 & $151\pm6.91$ & $146\pm6.92$ & $139\pm7.82$\textsuperscript{$+$} & $0\pm0$\textsuperscript{$+$}\\
+ & 100 & $493\pm10.2$ & $495\pm18.4$ & $495\pm11.4$ & $0.497\pm0.846$\textsuperscript{$+$}\\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\begin{table*}[t]
+\centering
 \caption{Final error for $N=100$: mean $\pm$ sample standard deviation over 10 runs.
 A superscript marks a result significantly better ($+$) or worse ($-$) than the sequential
 DE (Mann--Whitney, Holm correction within the configuration, $\alpha=0.05$); 0 is an error
-exactly equal to zero in double precision. Tables for $N=50$ and $N=500$ are in the repository.}
+below the double-precision resolution (see the benchmark functions above). Tables~\ref{tab:err50} and \ref{tab:err500} give $N=50$ and $N=500$.}
 \label{tab:err}
+\small\setlength{\tabcolsep}{4pt}
 \begin{tabular}{lrcccc}
 \toprule
 Function & $D$ & Sequential DE & GPU v1 & GPU v2 & GPU jDE\\
@@ -494,6 +527,36 @@ Griewank & 10 & $0\pm0$ & $0\pm0$ & $0\pm0$ & $0\pm0$\\
 Rastrigin & 10 & $0\pm0$ & $0\pm0$ & $0\pm0$ & $0\pm0$\\
  & 50 & $168\pm6.01$ & $165\pm9.99$ & $165\pm10.3$ & $0\pm0$\textsuperscript{$+$}\\
  & 100 & $542\pm10.9$ & $532\pm14.5$ & $533\pm14.4$ & $0\pm0$\textsuperscript{$+$}\\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+
+\begin{table*}[t]
+\centering
+\caption{Final error for $N=500$: mean $\pm$ sample standard deviation over 10 runs, with the
+same markers as Table~\ref{tab:err}.}
+\label{tab:err500}
+\small\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lrcccc}
+\toprule
+Function & $D$ & Sequential DE & GPU v1 & GPU v2 & GPU jDE\\
+\midrule
+Sphere & 10 & $2.4{\times}10^{-6}\pm3.1{\times}10^{-7}$ & $7.8{\times}10^{-6}\pm2.9{\times}10^{-6}$\textsuperscript{$-$} & $9.6{\times}10^{-6}\pm3.1{\times}10^{-6}$\textsuperscript{$-$} & $1.6{\times}10^{-6}\pm7.3{\times}10^{-7}$\textsuperscript{$+$}\\
+ & 50 & $1.1{\times}10^{-4}\pm1.1{\times}10^{-5}$ & $2.3{\times}10^{-4}\pm2.8{\times}10^{-5}$\textsuperscript{$-$} & $2.4{\times}10^{-4}\pm2.8{\times}10^{-5}$\textsuperscript{$-$} & $7.3{\times}10^{-11}\pm1.8{\times}10^{-11}$\textsuperscript{$+$}\\
+ & 100 & $0.0733\pm5.5{\times}10^{-3}$ & $0.0979\pm0.0117$\textsuperscript{$-$} & $0.0982\pm6.5{\times}10^{-3}$\textsuperscript{$-$} & $4.3{\times}10^{-15}\pm1.3{\times}10^{-15}$\textsuperscript{$+$}\\
+\midrule
+Rosenbrock & 10 & $53.3\pm15.9$ & $48.0\pm15.6$ & $47.5\pm16.1$ & $19.7\pm8.52$\textsuperscript{$+$}\\
+ & 50 & $358\pm53.2$ & $434\pm55.3$\textsuperscript{$-$} & $400\pm33.6$\textsuperscript{$-$} & $45.2\pm1.01$\textsuperscript{$+$}\\
+ & 100 & $2.2{\times}10^{4}\pm3.4{\times}10^{3}$ & $2.3{\times}10^{4}\pm3.4{\times}10^{3}$ & $2.5{\times}10^{4}\pm3.3{\times}10^{3}$ & $104\pm24.5$\textsuperscript{$+$}\\
+\midrule
+Griewank & 10 & $0.143\pm0.0245$ & $0.147\pm0.0304$ & $0.145\pm0.0335$ & $0.0755\pm0.0208$\textsuperscript{$+$}\\
+ & 50 & $2.1{\times}10^{-4}\pm3.0{\times}10^{-5}$ & $4.1{\times}10^{-4}\pm5.9{\times}10^{-5}$\textsuperscript{$-$} & $4.3{\times}10^{-4}\pm4.3{\times}10^{-5}$\textsuperscript{$-$} & $9.9{\times}10^{-11}\pm2.0{\times}10^{-11}$\textsuperscript{$+$}\\
+ & 100 & $0.0439\pm3.3{\times}10^{-3}$ & $0.0557\pm5.0{\times}10^{-3}$\textsuperscript{$-$} & $0.0571\pm5.4{\times}10^{-3}$\textsuperscript{$-$} & $1.9{\times}10^{-15}\pm9.2{\times}10^{-16}$\textsuperscript{$+$}\\
+\midrule
+Rastrigin & 10 & $4.48\pm0.915$ & $4.66\pm0.789$ & $4.92\pm1.18$ & $2.19\pm0.564$\textsuperscript{$+$}\\
+ & 50 & $224\pm6.49$ & $229\pm7.92$ & $222\pm7.61$ & $17.9\pm2.67$\textsuperscript{$+$}\\
+ & 100 & $628\pm14.2$ & $623\pm17.5$ & $623\pm17.8$ & $35.4\pm3.22$\textsuperscript{$+$}\\
 \bottomrule
 \end{tabular}
 \end{table*}
