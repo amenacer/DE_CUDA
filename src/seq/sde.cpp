@@ -5,7 +5,11 @@
 // que le GPU a un bug. Utilise l'interface commune (src/common/benchmarks.h)
 // pour que les deux versions optimisent exactement les memes fonctions.
 //
-// Usage : ./sde <fonction> <D> <N> <seed> [fichier.csv] [--trace]
+// Usage : ./sde <fonction> <D> <N> <seed> [fichier.csv] [--trace] [--generationnel]
+//
+// --generationnel : remplacement en fin de generation, comme sur GPU (experience de
+// controle) : les essais lisent la population de la generation precedente et les
+// gagnants sont ecrits dans une seconde population. L'algo est note sde_gen.
 // Compilation : g++ -std=c++14 -O2 -o sde sde.cpp
 #include <cmath>
 #include <chrono>
@@ -60,7 +64,7 @@ static bool health_check(const std::vector<double>& pop, const std::vector<doubl
 
 int main(int argc, char** argv) {
     if (argc < 5) {
-        fprintf(stderr, "Usage: %s <fonction> <D> <N> <seed> [fichier.csv] [--trace]\n", argv[0]);
+        fprintf(stderr, "Usage: %s <fonction> <D> <N> <seed> [fichier.csv] [--trace] [--generationnel]\n", argv[0]);
         fprintf(stderr, "  fonction in {sphere, rosenbrock, griewank, rastrigin}\n");
         return 1;
     }
@@ -82,8 +86,10 @@ int main(int argc, char** argv) {
 
     const char* csv_path = nullptr;
     bool trace = false;
+    bool generationnel = false;
     for (int a = 5; a < argc; a++) {
         if (std::strcmp(argv[a], "--trace") == 0) trace = true;
+        else if (std::strcmp(argv[a], "--generationnel") == 0) generationnel = true;
         else csv_path = argv[a];
     }
 
@@ -115,8 +121,14 @@ int main(int argc, char** argv) {
     if (trace) printf("TRACE gen=0 FE=%lld best_error=%.9e\n", fe, best_of());
 
     std::vector<double> trial(D);
+    std::vector<double> pop_next, fit_next;
     long long gen = 0;
     while (fe < maxFE) {
+        // Mode generationnel : les gagnants vont dans pop_next ; pop reste celle de la
+        // generation precedente pendant toute la generation.
+        if (generationnel) { pop_next = pop; fit_next = fit; }
+        std::vector<double>& pop_w = generationnel ? pop_next : pop;
+        std::vector<double>& fit_w = generationnel ? fit_next : fit;
         for (int i = 0; i < N && fe < maxFE; i++) {
             int r1 = pick_distinct(rng, idx_dist, i);
             int r2 = pick_distinct(rng, idx_dist, i, r1);
@@ -136,10 +148,11 @@ int main(int argc, char** argv) {
             fe++;
 
             if (trial_fit <= fit[i]) {
-                for (int j = 0; j < D; j++) pop[i * D + j] = trial[j];
-                fit[i] = trial_fit;
+                for (int j = 0; j < D; j++) pop_w[i * D + j] = trial[j];
+                fit_w[i] = trial_fit;
             }
         }
+        if (generationnel) { pop.swap(pop_next); fit.swap(fit_next); }
         gen++;
         if (trace) printf("TRACE gen=%lld FE=%lld best_error=%.9e\n", gen, fe, best_of());
     }
@@ -154,7 +167,7 @@ int main(int argc, char** argv) {
            func_name(fid), D, N, seed, best, fe, maxFE, time_s, healthy ? "OK" : "ANOMALIE");
 
     if (csv_path) {
-        if (!append_result(csv_path, "sde", func_name(fid), D, N, seed, best, time_s, fe)) {
+        if (!append_result(csv_path, generationnel ? "sde_gen" : "sde", func_name(fid), D, N, seed, best, time_s, fe)) {
             fprintf(stderr, "Impossible d'ecrire dans %s\n", csv_path);
             return 1;
         }
