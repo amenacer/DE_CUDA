@@ -211,11 +211,13 @@ its single-precision rate. The full campaign (CUDA~13) runs the sequential DE, v
 
 \emph{Timing.} The sequential time runs from the initialization of the population to the end
 of the main loop. The GPU time, measured with CUDA events, runs from the initialization of the
-random generators and of the population to the copy of the best individual; it excludes the
+random generators and of the population to the copy of the result to the host (the 16-byte
+best individual for version~2, the $N$ final fitness values for version~1); it excludes the
 creation of the CUDA context, the allocations, the copy of $o$ and the final copy of the
-population used by the checks. Identical GPU runs differ by less than 1\,\% in time, whereas
-the sequential times vary by 10 to 17\,\% between Colab sessions; speedups are therefore given
-with two significant digits.
+population used by the checks. Over the 10 runs of a configuration, the GPU times vary little
+(median coefficient of variation 0.4\,\% for version~2), whereas the sequential times vary by
+18\,\% (median) on the shared Colab CPU; speedups are therefore given with two significant
+digits.
 
 \emph{Statistics.} Each GPU algorithm is compared with the sequential DE by a two-sided
 Mann--Whitney test~\cite{mann1947} on the 10 final errors, with Holm's
@@ -237,8 +239,8 @@ f_{\mathrm{Ras}}(x) &= \textstyle\sum_{j} z_j^2 - 10\cos(2\pi z_j) + 10,
 on $[-100,100]^D$ (Sphere, Rosenbrock), $[-600,600]^D$ (Griewank) and $[-5,5]^D$ (Rastrigin).
 The shift $o$ is drawn uniformly in 80\,\% of the domain and the CEC bias is not added. Each
 program returns the error $f(x)-f(o)$. Its resolution differs between functions: for Griewank
-($1-\prod\cos$) and Rastrigin ($10-10\cos$) the cancellation makes any error below about
-$10^{-16}$ equal to 0, whereas for Sphere an error of 0 means $x=o$ exactly in double precision.
+($1-\prod\cos$) and Rastrigin ($10-10\cos$) the cancellation makes errors below about
+$10^{-15}$ unmeasurable (they are returned as 0 or as a few units of $10^{-16}$), whereas for Sphere an error of 0 means $x=o$ exactly in double precision.
 The functions are shifted but not rotated; Sphere and Rastrigin are separable and Griewank
 becomes nearly separable as $D$ grows.
 
@@ -247,8 +249,8 @@ becomes nearly separable as $D$ grows.
 program in all 36 configurations. Its speedup over the sequential DE grows with $D$ and $N$,
 from $1.9\times$ ($D=10$, $N=50$) to $58\times$ ($D=100$, $N=500$) on times pooled over the four
 functions, and from $1.5\times$ to $74\times$ for single functions. Version~1 is slower than the
-sequential DE with $N=50$ and $D=10$ ($0.81\times$), stays below $2.3\times$ with $N\le100$, and
-reaches $6\times$ to $9.5\times$ with $N=500$, when it launches four blocks. Version~2 is thus up
+sequential DE for some functions with $N=50$ (down to $0.73\times$), stays below $2.3\times$ with
+$N\le100$, and reaches $6\times$ to $9.5\times$ with $N=500$, when it launches four blocks. Version~2 is thus up
 to about $15\times$ faster than version~1 ($D=100$, $N=100$). Since version~1 was not tuned
 (blocks of 32 threads would use four SMs instead of one for $N=100$), this ratio measures the
 benefit of the gene-level mapping over this baseline, not over the best one-thread-per-individual
@@ -370,7 +372,8 @@ without significance: on Griewank with $D=100$, $N=50$, some runs do not reach t
 (mean 0.044 against 0). With $N\le100$ its gain comes mostly from Rastrigin, which it solves
 for $D=50$ and $100$ where DE/rand/1/bin stays near 165 and 535: on a separable function a
 small $CR$ is favourable (Table~\ref{tab:var}), and jDE adapts $CR$ towards such values. With
-$N=500$ it is better in all 12 configurations, including the non-separable Rosenbrock
+$N=500$ it is better in 11 of the 12 configurations (all but Sphere with $D=10$), including the
+non-separable Rosenbrock
 ($104$ against $2.2\times10^4$ for $D=100$): there the budget allows few generations, and the
 adapted $F_i$ and $CR_i$ converge much faster than the fixed $F=0.5$, $CR=0.3$. Counting as a
 success a final error below $10^{-8}$, as Qin \emph{et al.}, the sequential DE and both GPU
@@ -441,7 +444,7 @@ Rastrigin & 50  & 100 & $165$                & 147--174             & $2.94$\\
 \caption{Final error for $N=50$: mean $\pm$ sample standard deviation over 10 runs. A superscript
 marks a result significantly better ($+$) or worse ($-$) than the sequential DE (Mann--Whitney,
 Holm's correction over the 108 tests of the campaign). For Griewank and Rastrigin, 0 means an
-error below about $10^{-16}$; for Sphere, $x=o$ exactly. On Rosenbrock with $D=100$, one
+error below about $10^{-15}$; for Sphere, $x=o$ exactly. On Rosenbrock with $D=100$, one
 sequential run ends at 137, the nine others between 81 and 87.}
 \label{tab:err50}
 \small\setlength{\tabcolsep}{4pt}
@@ -527,7 +530,7 @@ gene to one thread, fusing the four DE operators and keeping the population and 
 the best individual on the device makes the GPU program faster than the sequential DE in every
 configuration, by $1.9\times$ to $58\times$ on pooled times. The GPU versions lose accuracy only
 with $N=500$, and a generational sequential DE loses the same accuracy, which locates the cause
-in the replacement scheme. The self-adaptive jDE runs at almost the same speed and is the most
+in the replacement scheme. The self-adaptive jDE, 10 to 33\,\% slower than version~2, is the most
 accurate program. Measured timings, not theoretical occupancy, determined the block size.
 
 \emph{Limitations.} The speedups come from one GPU, in double precision, against a single-core
