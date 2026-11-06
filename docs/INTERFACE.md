@@ -1,7 +1,6 @@
-# Interface commune DE_CUDA (issue #5)
+# Interface commune DE_CUDA
 
 Contrat partagé entre la version séquentielle (`src/seq`) et la version GPU (`src/cuda`).
-**Ne pas modifier sans prévenir les deux autres membres du groupe.**
 
 ## Fichiers
 

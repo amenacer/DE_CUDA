@@ -1,8 +1,8 @@
-# Étape 7 — Variantes du DE sur GPU (issue #17, partie GPU)
+# Étape 7 — Variantes du DE sur GPU
 
 GPU : Tesla T4
 
-Sortie du notebook `notebooks/Etape7_variantes_DE_GPU.ipynb` (Colab, 7 octobre). Données brutes : `results/variantes_gpu_D50_N100.csv`.
+Sortie du notebook `notebooks/08_variantes_DE_GPU.ipynb` (Colab, 7 octobre). Données brutes : `results/variantes_gpu_D50_N100.csv`.
 
 ```
 de_cuda_v2.cu : compilation SANS aucun warning

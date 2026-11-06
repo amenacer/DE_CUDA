@@ -1,4 +1,4 @@
-# Étapes 6.1 à 6.6 — Analyse de la campagne complète (issues #15, #16, #21)
+# Analyse de la campagne complète
 
 Données : `results/campagne.csv` (étape 5, 1440 runs sur Tesla T4 : 4 algorithmes × 4 fonctions × D = 10/50/100 × N = 50/100/500 × 10 graines, budget 10⁴·D évaluations, F = 0,5, CR = 0,3 sauf jDE).
 
@@ -21,7 +21,7 @@ python3 scripts/verif_de_numpy.py
 | `tables/comparaison_qin.md` | Kruskal-Wallis entre les 3 implémentations du même DE ; comparaison avec cudaDEi |
 | `figures/speedup`, `time_vs_pop`, `time_vs_dim`, `boxplot_D*_P*` | figures PNG (200 dpi) et PDF |
 
-Le script `scripts/analyse.py` est celui écrit par Lisa pour l'issue #15 (testé sur un faux CSV) ; il lit maintenant directement le format commun du projet. Les tableaux et figures produits auparavant à partir du faux CSV ont été retirés du dépôt.
+Le script `scripts/analyse.py` lit directement le format commun du projet.
 
 ## 1. Temps et speedup
 

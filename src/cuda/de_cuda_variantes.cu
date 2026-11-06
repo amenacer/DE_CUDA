@@ -1,4 +1,4 @@
-// de_cuda_variantes.cu -- variantes du DE sur GPU (issue #17, partie GPU)
+// de_cuda_variantes.cu -- variantes du DE sur GPU
 //
 // Meme organisation que la v2 (src/cuda/de_cuda_v2.cu) : kernel P (tirages par
 // individu), kernel fusionne MCER (un bloc par individu, un thread par gene,

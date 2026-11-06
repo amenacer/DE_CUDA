@@ -1,4 +1,4 @@
-// de_cuda_v2.cu -- DE/rand/1/bin sur GPU, version 2 optimisee (issues #12 et #13)
+// de_cuda_v2.cu -- DE/rand/1/bin sur GPU, version 2 optimisee
 //
 // Ce qui change par rapport a la v1 (src/cuda/de_cuda_v1.cu) :
 //

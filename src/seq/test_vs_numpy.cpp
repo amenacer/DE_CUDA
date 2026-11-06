@@ -1,4 +1,4 @@
-// test_vs_numpy.cpp -- genere des points de reference pour l'issue #6
+// test_vs_numpy.cpp -- genere des points de reference (verification NumPy des fonctions)
 // (2.3 : tester les 4 fonctions contre NumPy).
 //
 // Pour chaque fonction, tire 5 points aleatoires dans le domaine et calcule

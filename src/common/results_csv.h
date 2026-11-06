@@ -1,4 +1,4 @@
-// results_csv.h -- FORMAT COMMUN des resultats (issue #5)
+// results_csv.h -- FORMAT COMMUN des resultats
 // Une ligne par run :  algo,func,D,N,seed,best_error,time_s,FE
 #pragma once
 #include <cstdio>

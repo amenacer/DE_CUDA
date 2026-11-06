@@ -1,8 +1,8 @@
-# Étape 3.6-3.7 — validation du GPU contre le séquentiel et speedup (issue #11)
+# Étape 3.6-3.7 — validation du GPU contre le séquentiel et speedup
 
 GPU : Tesla T4 (Google Colab), CPU : Intel(R) Xeon(R) CPU @ 2.00GHz, CUDA 12 (nvcc -O3 -arch=sm_75)
 
-Sortie du notebook `notebooks/Etape3_6_validation_speedup.ipynb` (séquentiel : `src/seq/sde.cpp` de Lounis, branche `lounis/2.7-2.9-csv-convergence`). Figure : `figures/speedup_v1.png`.
+Sortie du notebook `notebooks/06_v1_validation_speedup.ipynb` (séquentiel : `src/seq/sde.cpp`). Figure : `figures/speedup_v1.png`.
 
 ```
 de_cuda_v1.cu : compilation SANS aucun warning

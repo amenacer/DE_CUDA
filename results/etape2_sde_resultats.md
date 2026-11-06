@@ -1,11 +1,11 @@
-# Étape 2 — résultats du DE séquentiel (issues #6, #7, #8)
+# Étape 2 — résultats du DE séquentiel
 
-Sortie du notebook `notebooks/Etape2_resultats_sde.ipynb` (lecture seule, aucun push), exécuté le 7 octobre 2026 sur Colab, CPU Intel Xeon @ 2.20GHz. Code : `src/seq/sde.cpp` (DE/rand/1/bin, F = 0,5, CR = 0,3, budget 10⁴ × D évaluations). Figure : `figures/convergence_sde_D30.png`.
+Sortie du notebook `notebooks/04_DE_sequentiel.ipynb` (lecture seule, aucun push), exécuté le 7 octobre 2026 sur Colab, CPU Intel Xeon @ 2.20GHz. Code : `src/seq/sde.cpp` (DE/rand/1/bin, F = 0,5, CR = 0,3, budget 10⁴ × D évaluations). Figure : `figures/convergence_sde_D30.png`.
 
 ## Vérifications
 
-- **Fonctions de `benchmarks.h` contre NumPy (#6)** : 20 points (4 fonctions × 5), écart relatif maximal 3,9e-16 (tolérance 1e-12). `=== TOUS LES TESTS PASSENT ===`.
-- **Validation (#8)** : 10 runs Sphere D = 10, N = 50 → erreur 0 à chaque run, FE = 100 000, `sante=OK` (données : `results/sde_sphere10_check.csv`).
+- **Fonctions de `benchmarks.h` contre NumPy** : 20 points (4 fonctions × 5), écart relatif maximal 3,9e-16 (tolérance 1e-12). `=== TOUS LES TESTS PASSENT ===`.
+- **Validation** : 10 runs Sphere D = 10, N = 50 → erreur 0 à chaque run, FE = 100 000, `sante=OK` (données : `results/sde_sphere10_check.csv`).
 - **Reproductibilité** : Rosenbrock D = 10, N = 50, graine 7 lancée deux fois → 8,610298119e-01 les deux fois ; graine 8 → 2,677083333e+00.
 
 ## Un run par fonction (D = 10, N = 50, graine 1)

@@ -1,8 +1,8 @@
-# Étape 3 — contrôles du DE CUDA v1 (issues #9 et #10)
+# Étape 3 — contrôles du DE CUDA v1
 
 GPU : Tesla T4 (Google Colab), CPU : Intel(R) Xeon(R) CPU @ 2.00GHz, CUDA 12 (nvcc -O3 -arch=sm_75)
 
-Sortie du notebook `notebooks/Etape3_DE_CUDA_v1.ipynb` :
+Sortie du notebook `notebooks/05_DE_CUDA_v1.ipynb` :
 
 ```
 de_cuda_v1.cu : compilation SANS aucun warning

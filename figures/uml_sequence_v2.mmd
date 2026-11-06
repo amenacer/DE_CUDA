@@ -1,0 +1,34 @@
+%% Sequence diagram: one run of the CUDA DE, version 2 (src/cuda/de_cuda_v2.cu)
+sequenceDiagram
+    autonumber
+    actor U as User / run_all.py
+    participant H as Host (main, CPU)
+    participant G as GPU (global memory)
+    participant KP as kernel P
+    participant KM as kernel MCER
+    participant KA as kernel argmin
+
+    U->>H: de_cuda_v2 function D N seed file.csv
+    H->>H: check arguments, T = --threads or automatic (32 or 64)
+    H->>H: o = make_shift(f, D) (same shift as the sequential DE)
+    H->>G: cudaFree(0), cudaMalloc (pop A/B, fit A/B, indices, cuRAND states)
+    H->>G: cudaMemcpyToSymbol(c_shift ← o)
+    Note over H,G: start timer (cudaEventRecord e0)
+    H->>G: k_init_rng, k_init_pop<<<N, T>>>, k_eval_pop<<<N, T>>>
+    Note over H: fe = N
+    loop while fe < 10⁴·D (n = min(N, 10⁴·D − fe))
+        H->>KP: k_P (one thread per individual)
+        KP->>G: r1, r2, r3, jrand (int4) for each i
+        H->>KM: k_MCER<<<N, T>>> (one block per individual, one thread per gene)
+        KM->>KM: mutation + crossover → trial in shared memory
+        KM->>KM: f(trial) by tree reduction (log₂ T steps)
+        KM->>G: replacement: winner written to pop_out
+        H->>H: swap pop_in ↔ pop_out (pointers), fe += n
+    end
+    H->>KA: k_argmin<<<1, 512>>>
+    KA->>G: best individual (value + index)
+    G-->>H: struct Best (16 bytes)
+    Note over H,G: stop timer (cudaEventRecord e1)
+    G-->>H: copy population and fitness (untimed)
+    H->>H: checks: bounds, finite values, budget, GPU argmin = CPU min, GPU f = CPU evaluate()
+    H->>U: result line + CSV row (algo,func,D,N,seed,best_error,time_s,FE)

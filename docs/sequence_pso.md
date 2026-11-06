@@ -1,7 +1,7 @@
-# Diagramme de séquence du PSO original (tâche 1.4)
+# Diagramme de séquence du PSO original
 
 Source : `docs/uml/sequence_pso.mmd` · Image pour l'article : `docs/uml/sequence_pso.png`.
-Temps par itération mesurés à la tâche 1.3 (GPU T4, Levy 3D, N = 512, 30 000 itérations).
+Temps par itération mesurés au chronométrage du PSO (GPU T4, Levy 3D, N = 512, 30 000 itérations).
 
 ```mermaid
 sequenceDiagram
