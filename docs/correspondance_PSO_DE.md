@@ -1,4 +1,4 @@
-# Correspondance PSO → DE (tâche 1.5)
+# Correspondance PSO → DE
 
 Pour chaque élément du code PSO du prof : ce qu'il devient dans notre DE/rand/1/bin.
 

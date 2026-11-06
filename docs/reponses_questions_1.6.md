@@ -1,6 +1,6 @@
 # Reponses aux 5 questions de la section 1.6
 
-Notebook source : `notebooks/Etape1_PSO_diagnostic.ipynb`, section 1.6.
+Notebook source : `notebooks/01_PSO_diagnostic.ipynb`, section 1.6.
 Reponses basees sur `src/pso_original/kernel.cu` et `kernel.cpp` (config
 par defaut : `NUM_OF_PARTICLES = 512`, `NUM_OF_DIMENSIONS = 3`, 32
 threads/bloc).

@@ -1,8 +1,8 @@
-# Étape 4 — DE CUDA v2 : occupation, qualité, temps (issues #12 et #13)
+# Étape 4 — DE CUDA v2 : occupation, qualité, temps
 
 GPU : Tesla T4 (Google Colab), CPU : Intel(R) Xeon(R) CPU @ 2.00GHz, CUDA 12 (nvcc -O3 -arch=sm_75)
 
-Sortie du notebook `notebooks/Etape4_DE_CUDA_v2.ipynb`. Figure : `figures/temps_v1_v2_N.png`.
+Sortie du notebook `notebooks/07_DE_CUDA_v2.ipynb`. Figure : `figures/temps_v1_v2_N.png`.
 
 ```
 de_cuda_v1.cu : compilation SANS aucun warning

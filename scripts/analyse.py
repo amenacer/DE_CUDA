@@ -3,8 +3,7 @@
 """
 analyse.py -- analyse des résultats de la campagne DE séquentiel / DE CUDA.
 
-Écrit par Lisa (issue #15, testé sur un faux CSV), adapté au CSV réel de la
-campagne (issue #16) : lecture directe du format commun du projet
+Lecture directe du format commun du projet
 `algo,func,D,N,seed,best_error,time_s,FE` (results_csv.h), tableau de speedup
 par fonction, sorties dans results/analyse/.
 
