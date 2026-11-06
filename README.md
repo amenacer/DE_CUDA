@@ -105,7 +105,6 @@ DE_CUDA/
   docs/           correspondance PSO → DE, interface commune, diagramme de séquence du PSO,
                   réponses aux questions sur le PSO, journal du projet étape par étape (JOURNAL.md)
   paper/          article : article_DE_CUDA.pdf et sa source LaTeX main.tex (format IEEE ; figures dans figures/)
-  presentation/   diapositives de la soutenance
 ```
 
 Tous les programmes s'utilisent de la même façon et écrivent une ligne par run dans le même format CSV :
